@@ -1,0 +1,791 @@
+---
+title: "Identify_duplicates_in_1995_BCmykiss"
+author: 'Noé Barthelemy'
+date: "31 août 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Adter the first report to Devon we skyped and then he asked me: 
+
+  Did you look for identical or nearly identical genotypes in the dataset? 
+  This could be very important as it can influence the confidence in the parentage assignments. 
+  Also looking at the distribution of almost-identical genotypes (i.e. with 1, 2, 3, etc. mismatches) can be very informative-- the re-sampled individuals will have nearly perfect matches with themselves, and then there will be a distribution of inbred/related individuals with similar genotypes. Does that make sense?
+
+Some fish will be ~80% related: Those are inbred 
+Some will be 95-99% related : Those may be duplicates ! 
+
+
+# ....
+# CERVUS
+# ....
+
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+                                      ################ CERVUS ###################
+
+
+
+## We are the 31/08/2019 and this is the first version of this analysis.
+
+1) The software: We will try to use Cervus to do that! 
+2) The input   :  "gtseq7-12_ubc_hap2col_current_vcf.vcf.txt" 
+ 
+
+## 1) Library
+```{r}
+library(tidyverse)
+library(radiator)
+library(adegenet)
+library(igraph)
+library(dplyr)
+library(tibble)
+library(tidyr)
+
+```
+
+
+## 2) Identity analysis in CERVUS
+
+1) Before to run it you need an allele frequency file. 
+
+I ran the allele freq analysis on CERVUS using "gtseq7-12_ubc_hap2col_current_vcf.vcf.txt" and the output is in the folder "HW_Allelfreq_SUmmary_CERVUS".
+
+2) Then I can run the identity analysis. 
+
+I ran it with the same file as above, plus the allele frequency data generated in step one "Summary_stats_HW_gtseq7-12.alf"
+I specified :  Minimum number of matching loci = 50 (i.e less than 50% of all loci)
+               Allow mismatches = 124  
+               
+The idea is to allow some mismatches and then filter the results myself ! :) 
+
+We got the results ! 
+It's two files:
+1) one summary log file called "Identity_analysis_CERVUS_01092019_gtseq7-12_ubc_hap2col_current_vcf.vcf.txt"
+2) A data file containing the pairs, with probabilities etc called "Identity_analysis_DATA_CERVUS_01092019_gtseq7-12_ubc_hap2col_current_vcf.vcf.csv"
+
+
+## 3) Analysis of Cervus identity analysis output
+
+Let's load it: 
+```{r}
+Identity_analysis_DATA_CERVUS_01092019_gtseq7_12_ubc_hap2col_current_vcf_vcf <- read_csv("Analysis/Identity_analysis_CERVUS/Identity_analysis_DATA_CERVUS_01092019_gtseq7-12_ubc_hap2col_current_vcf.vcf.csv")
+Identity_analysis_V1 <- Identity_analysis_DATA_CERVUS_01092019_gtseq7_12_ubc_hap2col_current_vcf_vcf
+```
+
+# To understand the probabilities columns 
+pID = If the two genotypes match exactly, this column contains the probability that a single unrelated individual has this genotype. 
+pIDsib = If the two genotypes match exactly, this column contains the probability that a single full sibling has this genotype. 
+
+
+# A first look
+```{r}
+count(Identity_analysis_V1, Status)
+
+```
+# Change steelhead to SH_
+
+```{r}
+Identity_analysis_V2 <- Identity_analysis_V1 %>% 
+  filter(., !Status == "Not enough loci") %>% 
+  mutate(., First_ID = str_replace_all(`First ID`, "steelhead", "SH_")) %>%
+  mutate(., Second_ID = str_replace_all(`Second ID`, "steelhead", "SH_")) %>% 
+  select(., -c(`First ID`, `Second ID`)) %>% 
+  select(., Second_ID, everything()) %>% 
+  select(., First_ID, everything()) %>% 
+  rename( Mismatching_loci = "Mismatching loci")
+```
+
+# Compute some stuff for the analysis ! 
+
+# From how many mismatches we keep a pair as a true identical ? 
+
+That's the hardest part! 
+Let's take some variables from Fullmeta V5 and try to compare each guy in the pair and compute a homemade likelihood ratio of being a true identical! 
+
+   The stuff we need
+```{r}
+For_metacervus_0 <- FullMeta_V5 %>% 
+  select(., c(Sample_ID, Sex.x, LENGTH, Coll_year, Coll_month )) %>% 
+  rename(., First_ID = "Sample_ID")
+
+For_metacervus <- For_metacervus_0
+colnames(For_metacervus) <- paste(colnames(For_metacervus), "_1", sep = "")
+For_metacervus <- For_metacervus %>% 
+  rename(First_ID = "First_ID_1")
+
+Omy_for_metacervus_0 <- Good_Omy5s_V2 %>% 
+  select(., c(hapstr, kid)) %>% 
+  rename(., First_ID = "kid")
+
+Omy_for_metacervus <- Omy_for_metacervus_0
+colnames(Omy_for_metacervus) <- paste(colnames(Omy_for_metacervus), "_1", sep = "")
+Omy_for_metacervus <- Omy_for_metacervus %>% 
+  rename(First_ID = "First_ID_1")
+
+head(Omy_for_metacervus)
+head(For_metacervus)
+
+For_metacervus_2 <- For_metacervus_0
+Omy_for_metacervus_2 <- Omy_for_metacervus_0 
+colnames(For_metacervus_2) <- paste(colnames(For_metacervus_2), "_2", sep = "")
+colnames(Omy_for_metacervus_2) <- paste(colnames(Omy_for_metacervus_2), "_2", sep = "")
+
+
+For_metacervus_2 <- For_metacervus_2 %>% 
+  rename(., Second_ID = "First_ID_2")
+Omy_for_metacervus_2 <- Omy_for_metacervus_2 %>% 
+  rename(., Second_ID = "First_ID_2")
+
+```
+
+   Let's join it 
+```{r}
+
+metacervus_Identity_analysis_V2 <- Identity_analysis_V2 %>% 
+  left_join(., For_metacervus, by = "First_ID") %>% 
+  left_join(., Omy_for_metacervus, by = "First_ID") %>% 
+  left_join(., For_metacervus_2, by = "Second_ID") %>% 
+  left_join(., Omy_for_metacervus_2, by = "Second_ID") 
+  
+```
+
+Ok now it is joined, we need to create a function to compute a score of likelihood! 
+Rules: 
+
+Not same Omy5 haplotype:  40 points
+Not same Sex (2sexy)   :  40 points
+Year and month is the same (+/- 1) but size not the same: 10 points
+Year 1 >> Year 2 but size 2 >> size 1 :  30 points
+Year 2 >> Year 1 but size 1 >> size 2 :  30 points also ! 
+
+In score_Y the month can be a month before or after, because the sampling is in two weeks, sometimes overlapping several months (eg. End of september and beginnig of october).
+We take that into account.
+
+```{r}
+
+metacervus_Identity_analysis_V2$Coll_month_1 <- as.numeric(as.character(metacervus_Identity_analysis_V2$Coll_month_1))
+metacervus_Identity_analysis_V2$Coll_month_2 <- as.numeric(as.character(metacervus_Identity_analysis_V2$Coll_month_2))
+
+metacervus_Identity_analysis_V3 <- metacervus_Identity_analysis_V2 %>% 
+  mutate(., NoeQualScore_O = if_else(hapstr_1 != hapstr_2, "20", "0")) %>%
+  mutate(., NoeQualScore_S = if_else(Sex.x_1 != Sex.x_2, "20", "0" )) %>% 
+  mutate(., NoeQualScore_Y = if_else( Coll_year_1 != Coll_year_2, "0", if_else(Coll_month_1 != Coll_month_2 & Coll_month_1 != (Coll_month_2+1) & Coll_month_1 != (Coll_month_2-1), "0", if_else(LENGTH_1 != LENGTH_2, "10", "0")) )) %>% 
+  mutate(., Length_diff = abs(LENGTH_1 - LENGTH_2)) %>% 
+  mutate(., Yeardiff = abs(as.numeric(Coll_year_1) - as.numeric(Coll_year_2))) %>% 
+  mutate(., Monthdiff = abs(as.numeric(Coll_month_1) - as.numeric(Coll_month_2)))
+ 
+
+# Those two can't work, by the way !! 
+#  mutate(., NoeQualScore_X = if_else(Coll_year_1 < Coll_year_2, "0", if_else(LENGTH_1 > LENGTH_2, "30", "0") )) %>% 
+#  mutate(., NoeQualScore_T = if_else(Coll_year_1 > Coll_year_2, "0", if_else(LENGTH_1 < LENGTH_2, "30", "0") ))
+
+metacervus_Identity_analysis_V3$NoeQualScore_O <- as.numeric(as.character(metacervus_Identity_analysis_V3$NoeQualScore_O)) 
+metacervus_Identity_analysis_V3$NoeQualScore_Y <- as.numeric(as.character(metacervus_Identity_analysis_V3$NoeQualScore_Y))
+#metacervus_Identity_analysis_V3$NoeQualScore_T <- as.numeric(as.character(metacervus_Identity_analysis_V3$NoeQualScore_T))
+metacervus_Identity_analysis_V3$NoeQualScore_S <- as.numeric(as.character(metacervus_Identity_analysis_V3$NoeQualScore_S))
+#metacervus_Identity_analysis_V3$NoeQualScore_X <- as.numeric(as.character(metacervus_Identity_analysis_V3$NoeQualScore_X))
+
+
+
+metacervus_Identity_analysis_V4 <- metacervus_Identity_analysis_V3 %>% 
+    mutate(., NoeQualScore = c(NoeQualScore_O + NoeQualScore_Y + NoeQualScore_S ))
+
+head(metacervus_Identity_analysis_V3)
+```
+
+
+Cool we computed that ! 
+
+
+# Take the Exact matches first
+```{r}
+Exact_Identity_analysis_V3 <- metacervus_Identity_analysis_V4 %>% 
+  filter(., Status == "Exact match") %>% 
+  add_count(First_ID) 
+
+View(Exact_Identity_analysis_V3)
+
+
+```
+
+ 
+
+
+# Take the Fuzzy matches second
+```{r}
+Fuzzy_Identity_analysis_V1 <- metacervus_Identity_analysis_V4 %>% 
+  filter(., Status == "Fuzzy match")
+```
+
+
+
+Plot mismatch pairs cutoff 10 loci
+```{r}
+Mismatch_cutoff_plot <- Fuzzy_Identity_analysis_V4 %>%
+ filter(Mismatching_loci >= 1L & Mismatching_loci <= 
+    35L) %>%
+ ggplot() +
+ aes(x = Mismatching_loci) +
+ geom_histogram(bins = 23L, fill = "#0c4c8a") +
+ labs(x = "Mismatching loci", y = "Count") +
+ theme_minimal()
+
+ggsave(Mismatch_cutoff_plot, device = "png", path =  "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Plots/",  filename = "Mismatch_cutoff_plot.png", dpi = 250  )
+
+Mismatch_cutoff_plot
+```
+
+
+
+
+ 
+# The very fuzzy guys
+Those are the ones with a homemade score of more than zéro, but less than 10 mismatches. 
+There are 19 of them, none with more than 4 mismatches, all from 2013. 
+Interestingly, they are always from the same month! Because the sampling is happening in two weeks that could be end of Sep and beginning of Oct, I would have expected some of these matches to have one member caught "in September" and the other in October! 
+But it is not the case !
+
+```{r}
+
+VeryFuzzy_guys <- Fuzzy_Identity_analysis_V4 %>% 
+  filter(., NoeQualScore > 0) %>% 
+  filter(., !Mismatching_loci > 10) 
+nrow(VeryFuzzy_guys)
+
+esquisse::esquisser()
+View(VeryFuzzy_guys)
+```
+
+ 
+ 
+```{r}
+Ambiguous_fuzzy_guys_V1 <- Fuzzy_Identity_analysis_V4 %>% 
+  filter(., !NoeQualScore_O == "20" ) %>% 
+  filter(., !NoeQualScore_S == "20" ) %>% 
+  filter(., !NoeQualScore_Y == "10" )
+nrow(Ambiguous_fuzzy_guys_V1)
+
+```
+100746 fuzzy identical pairs !
+
+
+Let's filter out the ones with more than 62 mismatch: We now for sure that they are not identical pairs!  
+
+```{r}
+
+Ambiguous_fuzzy_guys_V2 <- Ambiguous_fuzzy_guys_V1 %>% 
+  filter(., Mismatching_loci <= 80)
+
+Ambiguous_fuzzy_guys_36 <- Ambiguous_fuzzy_guys_V1 %>% 
+  filter(., Mismatching_loci <= 36)
+
+
+Ambiguous_fuzzy_guys_58 <- Ambiguous_fuzzy_guys_V1 %>% 
+  filter(., Mismatching_loci <= 58)
+
+
+library(ggplot2)
+
+# Plot with the fuzzy ones with 36 mismatching loci ! :) 
+
+Ambifuzzy_mismatch_less36 <- ggplot(data = Ambiguous_fuzzy_guys_36) +
+  aes(x = Mismatching_loci) +
+  geom_histogram(bins = 30, fill = "#0c4c8a") +
+  theme_minimal()
+
+# Less than 74  
+
+Ambifuzzy_mismatch_less74 <- ggplot(data = Ambiguous_fuzzy_guys_V2) +
+  aes(x = Mismatching_loci) +
+  geom_histogram(bins = 30, fill = "#0c4c8a") +
+  theme_classic()
+
+# Less than 61 
+
+Ambifuzzy_mismatch_less58 <-   ggplot(data = Ambiguous_fuzzy_guys_58) +
+  aes(x = Mismatching_loci) +
+  geom_histogram(bins = 30, fill = "#0c4c8a") +
+  theme_minimal()
+
+ggsave("Ambifuzzy_mismatch_less36.png", plot = Ambifuzzy_mismatch_less36, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Additions_to_BigCreek_project/")
+ggsave("Ambifuzzy_mismatch_less58.png", plot = Ambifuzzy_mismatch_less58, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Additions_to_BigCreek_project/")
+ggsave("Ambifuzzy_mismatch_less74.png", plot = Ambifuzzy_mismatch_less74, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Additions_to_BigCreek_project/")
+
+
+
+View(Ambiguous_fuzzy_guys)
+
+
+```
+
+Now let's take the really ambiguous fuzzy guys !
+
+```{r}
+
+Ambiguous_fuzzy_guys_V3 <- Ambiguous_fuzzy_guys_V1 %>% 
+  filter(., Mismatching_loci <= 10)
+cor.test(Ambiguous_fuzzy_guys_V3$Yeardiff, Ambiguous_fuzzy_guys_V3$Length_diff, alternative = "two.sided", method = "pearson")
+
+Not_ambiguous_fuzzy_guys <- Ambiguous_fuzzy_guys_V1 %>% 
+  filter(., !Mismatching_loci <= 10)
+cor.test(Not_ambiguous_fuzzy_guys$Yeardiff, Not_ambiguous_fuzzy_guys$Length_diff, alternative = "two.sided", method = "pearson")
+
+```
+
+ Ok let's make a point: We have our really fuzzy guys, all from 2013. We will decide with Devon if they are true pairs or not! Then, we have our ambiguous guys: The distribution of their mismatches shows a gap between 10 and 20 mismatches: We will take a look at those who have less than 10 mismatches now and then look at the exact matches. 
+
+# The fuzzy with less than 10 mismatches : Are some of these present in the Rubias list?
+(i.e the "Ambiguous fuzzy guys")
+
+
+ Check if there are common guys between Rubias and our less than 10 fuzzy guys !
+
+```{r}
+
+View(Ambiguous_fuzzy_guys_V3)
+AMBI1 <- Ambiguous_fuzzy_guys_V3 %>% 
+  select(., First_ID)
+AMBI2 <- Ambiguous_fuzzy_guys_V3 %>% 
+  select(., Second_ID) %>% 
+  rename(., First_ID = Second_ID)
+AMBI <- rbind(AMBI1, AMBI2) %>% 
+  unique() %>% 
+  rename(., Mate1 = "First_ID")
+
+# Do they have some in common? 
+nrow(AMBI)
+nrow(matchy_pairs_list_transformed)
+
+CommonFuzzy <- AMBI %>% 
+  filter(., Mate1 %in% matchy_pairs_list_transformed$Mate1)
+
+```
+ 
+ Ouah ! All the fuzzy guys with less than 10 mismatches have been identified by RUBIAS also. Not in the same pairs though but something is probably going on.
+ 
+# Now let's take a look at the exact matches.
+
+```{r}
+
+View(Exact_Identity_analysis_V3) 
+head(Exact_Identity_analysis_V3)
+
+Exact_Identity_analysis_V3_Sizediff <- Exact_Identity_analysis_V3 %>% 
+  filter(., NoeQualScore > 0)
+Exact_Identity_analysis_V4 <- Exact_Identity_analysis_V3 %>% 
+  select(., - n)
+
+```
+Some exact matches have a difference in length at time of collection, 4 pairs, from 2013 again ...
+
+Nothin to say about those really! 
+ 
+
+
+                                ##### Now let's do a final list of duplicates ! ######
+                                ##### Now let's do a final list of duplicates ! ######                                                                ##### Now let's do a final list of duplicates ! ######
+Let's include: 
+
+1) The exact matches
+2) The very fuzzy guys (you know, all from 2013 etc)
+3) The Ambiguous fuzzy guys (i.e fuzzy with less than 10 mismatches and NoeScore of zero)
+
+
+```{r}
+
+# One: Exact_Identity_analysis_V4
+# Two: VeryFuzzy_guys
+# Three: Ambiguous_fuzzy_guys_V3
+
+head(VeryFuzzy_guys)
+head(Exact_Identity_analysis_V4)
+
+Final_Identity_list <- rbind(Exact_Identity_analysis_V4, VeryFuzzy_guys, Ambiguous_fuzzy_guys_V3)
+
+
+
+```
+ 
+## Let's apply our function on that list.
+
+```{r}
+
+Final_pairs_V1 <- Final_Identity_list %>% 
+  select(., First_ID, Second_ID)
+  
+Final_pairs_V2 <- sort(clusters(graph.data.frame(Final_pairs_V1, directed = FALSE))$membership)
+  
+Final_pairs_V3 <- Final_pairs_V2 %>%
+ enframe() %>%
+ group_by(value) %>%
+ mutate(variable = paste0("Mate", 1:n())) %>%
+ ungroup() %>%
+ spread(variable, name) %>%
+ select(-value) 
+
+# A meta for those groups of identical fish: 
+
+Meta_identitylist <- FullMeta_V5 %>% 
+  select(., c(Sample_ID, Sex.x, LENGTH, Coll_year, Coll_month )) %>% 
+  rename(., First_ID = "Sample_ID")
+
+
+
+# Meta mate1
+
+Meta_identitylist_mate1 <- Meta_identitylist
+colnames(Meta_identitylist_mate1) <- paste(colnames(Meta_identitylist_mate1), "_1", sep = "")
+Meta_identitylist_mate1 <- Meta_identitylist_mate1 %>% 
+  rename(Mate1 = "First_ID_1")
+
+# Meta mate2
+
+Meta_identitylist_mate2 <- Meta_identitylist
+colnames(Meta_identitylist_mate2) <- paste(colnames(Meta_identitylist_mate2), "_2", sep = "")
+Meta_identitylist_mate2 <- Meta_identitylist_mate2 %>% 
+  rename(Mate2 = "First_ID_2")
+
+# Meta mate3
+
+Meta_identitylist_mate3 <- Meta_identitylist
+colnames(Meta_identitylist_mate3) <- paste(colnames(Meta_identitylist_mate3), "_3", sep = "")
+Meta_identitylist_mate3 <- Meta_identitylist_mate3 %>% 
+  rename(Mate3 = "First_ID_3")
+
+# Meta mate4
+
+Meta_identitylist_mate4 <- Meta_identitylist
+colnames(Meta_identitylist_mate4) <- paste(colnames(Meta_identitylist_mate4), "_4", sep = "")
+Meta_identitylist_mate4 <- Meta_identitylist_mate4 %>% 
+  rename(Mate4 = "First_ID_4")
+
+# Join all that
+
+Final_pairs_V4 <- Final_pairs_V3 %>% 
+  left_join(., Meta_identitylist_mate1  , by = "Mate1") %>% 
+  left_join(., Meta_identitylist_mate2  , by = "Mate2") %>% 
+  left_join(., Meta_identitylist_mate3  , by = "Mate3") %>% 
+  left_join(., Meta_identitylist_mate4  , by = "Mate4")
+
+
+```
+
+Now take a list of Mates 2, 3 and 4. Then we will input this list in the beginning of "Big_Creek_genotypes_script_1.rmd" and then re run the whole script! 
+
+Meanwhile, I saved the scripts (Script one to four !) in their first version in another folder, for tracability.
+
+```{r}
+
+Mate2_to_remove <- Final_pairs_V4 %>% 
+  select(., Mate2) %>% 
+  rename(., Mate_to_remove = "Mate2")
+Mate3_to_remove <- Final_pairs_V4 %>% 
+  select(., Mate3) %>% 
+  rename(., Mate_to_remove = "Mate3")
+Mate4_to_remove <- Final_pairs_V4 %>% 
+  select(., Mate4) %>% 
+  rename(., Mate_to_remove = "Mate4")
+
+
+Duplicates_to_remove_CERVUS <- rbind(Mate3_to_remove, Mate2_to_remove, Mate4_to_remove) %>% 
+  filter(., !is.na(Mate_to_remove))
+
+```
+
+We end up with 186 individuals to remove from the analysis ! :) 
+Now we will input that list in beginning of script1 and rerun the analysis.
+
+ 
+# The dataset with removed pairs would look like:  
+ 
+```{r}
+
+MetagenoALLYEARS_Nodup <- MetagenoALLYEARS %>% 
+  filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove) %>% 
+  mutate(., )
+
+head(MetagenoALLYEARS_Nodup)
+nrow(MetagenoALLYEARS_Nodup)
+nrow(MetagenoALLYEARS)
+
+```
+ 
+ 
+# Alternative mates for analysis ?
+
+It's useful to have fish sampled in different years! 
+For example, I may have fish sampled as a YOY and as an adult! :) 
+
+Let's try to have the alternative version of mates sampled as YOY in order to enrich the sibship analysis. 
+(i.e have more YOYs for larger sibgroups)
+
+```{r}
+
+# THE YOYs !! 
+
+Final_pairs_V5 <- Final_pairs_V4 %>% 
+  mutate(., Mate1_is_YOY = if_else((LENGTH_1 < 95) , 'YES', 'no' )) %>% 
+  mutate(., Mate2_is_YOY = if_else((LENGTH_2 < 95) , 'YES', 'no' )) %>% 
+  mutate(., Mate3_is_YOY = if_else((LENGTH_3 < 95) , 'YES', 'no' )) %>% 
+  mutate(., Mate4_is_YOY = if_else((LENGTH_4 < 95) , 'YES', 'no' )) %>% 
+  mutate(., Sampled_as_YOY = if_else(Mate1_is_YOY == 'YES', 'YES', if_else(Mate2_is_YOY == 'YES', 'YES', if_else(Mate3_is_YOY == 'YES', 'YES', if_else(Mate4_is_YOY == 'YES', 'YES', 'no'))))) %>% 
+  mutate(Sampled_as_YOY = if_else(is.na(Sampled_as_YOY), 'no', Sampled_as_YOY)) %>% 
+  mutate(Mate3_is_YOY = if_else(is.na(Mate3_is_YOY), 'no', Sampled_as_YOY)) %>% 
+  mutate(Mate4_is_YOY = if_else(is.na(Mate4_is_YOY), 'no', Sampled_as_YOY))
+
+# To get the alternative info from the YOY clone ! 
+
+Final_pairs_YOYs <- Final_pairs_V5 %>% 
+  filter(., Sampled_as_YOY == "YES") %>% 
+  mutate(., YearYOYclone = if_else(Final_pairs_YOYs$Mate1_is_YOY == "YES", Final_pairs_YOYs$Coll_year_1, if_else(Final_pairs_YOYs$Mate2_is_YOY == "YES", Final_pairs_YOYs$Coll_year_2, if_else(Final_pairs_YOYs$Mate3_is_YOY == "YES", Final_pairs_YOYs$Coll_year_3, if_else(Final_pairs_YOYs$Mate4_is_YOY == "YES", Final_pairs_YOYs$Coll_year_4, "Humhum" ) )  ) ))
+
+```
+
+ 
+# Something weird with cohorts from 2013 and 2014 
+
+Those guys are super close, very few mismatches, and I didn't realised they existed before because: 
+1) They are from different years and have different sizes - very normal. 
+2) They are identified as duplicates - No problem. 
+3) BUT ... the ones from 2013 are BIGGER than the ones from 2014 ... 
+ 
+ They are part of the same cohort than those fish causing fuzzy matches, but these ones cause problems during the sibship analysis !
+ 
+```{r}
+
+Weird_fish2013_2014 <- Final_pairs_V5 %>% 
+  mutate(., Weird = if_else(Coll_year_1 < Coll_year_2 & LENGTH_1 > LENGTH_2, "WEIRD !", "ok"  )) %>% 
+  filter(., Weird == "WEIRD !") %>% 
+  rename(., First_ID = "Mate1") %>% 
+  rename(., Second_ID = "Mate2") %>% 
+  left_join(., metacervus_Identity_analysis_V4, by = c("First_ID", "Second_ID"))
+
+```
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+    THE END 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+# ....
+# RUBIAS
+# ....
+
+
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+                                      ################ RUBIAS ###################
+
+
+```{r}
+library(tidyverse)
+library(Rcpp) 
+library(rubias)
+
+```
+
+# Input dataset
+
+We want a particular format, check out this : https://github.com/eriqande/rubias 
+
+
+Let's use Geno_Allyears, which is the big genotype file imported in earlier scripts.
+
+```{r}
+Rubias_GenoAllyears <- GenoALLYEARS %>% 
+      mutate(., indiv.ID = str_replace_all(indiv.ID, "steelhead", "SH_")) %>% 
+  rename(., indiv = indiv.ID) %>% 
+  rename(., repunit = group) %>% 
+  mutate(., collection = "Big_Creek") %>% 
+  mutate(., sample_type = "reference") %>% 
+  select(., indiv, everything()) %>% 
+  select(., collection, everything()) %>%
+  select(., repunit, everything()) %>%
+  select(., sample_type, everything()) 
+
+Rubias_GenoAllyears$repunit <- as.character(Rubias_GenoAllyears$repunit)
+Rubias_GenoAllyears$indiv <- as.character(Rubias_GenoAllyears$indiv)
+
+
+head(Rubias_GenoAllyears)
+```
+
+# Check duplicates
+
+Sometimes, for a variety of reasons, an individual’s genotype might appear more than once in a data set. rubias has a quick and dirty function to spot pairs of individuals that share a large number of genotypes. Clearly you only want to look at pairs that don’t have a whole lot of missing data, so one parameter is the fraction of loci that are non-missing in either fish. In our experience with Fluidigm assays, if a fish is missing at > 10% of the SNPs, the remaining genotypes are likely to have a fairly high error rate. So, to look for matching samples, let’s require 85% of the genotypes to be non-missing in both members of the pair. The last parameter is the fraction of non-missing loci at which the pair has the same genotype. We will set that to 0.94 first.
+
+```{r}
+matchy_pairs <- close_matching_samples(D = Rubias_GenoAllyears, 
+                                       gen_start_col = 5, 
+                                       min_frac_non_miss = 0.85, 
+                                       min_frac_matching = 0.94
+                                       )
+```
+
+
+
+```{r}
+# see that that looks like:
+matchy_pairs %>%
+  arrange(desc(num_non_miss), desc(num_match))
+```
+
+Thanks to a nice contributor of Stacks overflow, I got that: 
+```{r}
+pairs <- matchy_pairs %>% 
+  select(., indiv_1, indiv_2) 
+  
+pairs_v2 <- sort(clusters(graph.data.frame(pairs, directed = FALSE))$membership)
+  
+pairs_v3 <- pairs_v2 %>%
+ enframe() %>%
+ group_by(value) %>%
+ mutate(variable = paste0("Mate", 1:n())) %>%
+ ungroup() %>%
+ spread(variable, name) %>%
+ select(-value)
+
+```
+
+A list of individuals involved in those pairs: 
+```{r}
+# From original output: 
+
+MPL1 <- matchy_pairs %>% 
+  select(., indiv_1)
+MPL2 <- matchy_pairs %>% 
+  select(., indiv_2) %>% 
+  rename(., indiv_1 = "indiv_2") 
+
+matchy_pairs_list <- rbind(MPL1, MPL2) %>% 
+  distinct()
+  
+# From transformed table:
+
+MPL11 <- pairs_v3 %>% 
+    select(., Mate1)
+MPL22 <- pairs_v3 %>% 
+  select(., Mate2) %>% 
+  rename(., Mate1 = "Mate2") 
+
+MPL33 <- pairs_v3 %>% 
+  select(., Mate3) %>% 
+  rename(., Mate1 = "Mate3") 
+MPL44 <- pairs_v3 %>% 
+  select(., Mate4) %>% 
+  rename(., Mate1 = "Mate4") 
+
+
+matchy_pairs_list_transformed <- rbind(MPL11, MPL22, MPL33, MPL44) %>% 
+  distinct() %>% 
+  filter(., !is.na(Mate1))
+
+wtfagain <- matchy_pairs_list_transformed %>% 
+  filter(., !Mate1 %in% matchy_pairs_list$indiv_1)
+
+nrow(matchy_pairs_list) == nrow(matchy_pairs_list_transformed)
+head(matchy_pairs_list_transformed)
+```
+
+There is one of difference what the fuck ... 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

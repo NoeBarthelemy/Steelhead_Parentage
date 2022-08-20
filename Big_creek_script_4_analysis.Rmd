@@ -1,0 +1,479 @@
+---
+title: "Big_creek_Analysis_Script4"
+author: 'Noé Barthelemy'
+date: "21 juillet 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This script follows script 3 and begins with Parentage_meta_Omy_V5
+
+# Library
+
+We go to the library first.
+  
+```{r,warning=FALSE,message=FALSE}
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(esquisse)
+```
+  
+ 
+
+# The main analysis 
+
+This is a draft of analysis. It's refined with a better Franz run in script 9. 
+
+# Questions for the Paper: 
+
+We have to: 
+
+  
+  1) That is part of the analysis: How defining different groups for parentage affects the results? 
+  
+  I will continue that after Devon's comments (21/07/2019)
+  
+      - Define groups of parents and kids troughout the years. 
+      - The ones under 80mm FL are juveniles (YOY) : easy.
+      - The big-tagged individuals are necessarily adults (>100mm). 
+
+      In the end we didn't do it but its a possibility to do that: 
+
+          - The logic is: 
+          YOY individuals from year X should be the offspring of individuals from X-1.
+          --> Apply this logic with plenty of small analysis and you should find all the trios and pairs.
+
+          - Then don't forget to compare datasets to check for parents who came and spawned during several years.  
+
+  2) Family structures and stuff
+  
+  2.1) Check Sex ratio in each dataset too (before parentage and after)
+  2.2) Family sizes
+  2.3) Effect of drought on family structure ?
+  
+  !!!!!  TO BE DONE : 
+  2.4) Check that there are no full-sibs families ACROSS yoy cohorts. (In next run of FRANz I have to look for full-sibs and then check that among the fratries I don't have different years)
+
+
+
+  3) Omy5 analysis
+  
+  - Check Omy5 HWE the overall population, in residents, in anadromous, in Female, in Males.
+  - The big-tagged individuals that are >150mm are RESIDENTS.
+  - You should see a bias towards: 
+      a) RR genotypes should be residents
+      b) AA genotypes should be anadromous (i.e absent in >150mm individuals)
+      c) AR genotypes should be biased towards :
+          1) Females anadromous
+          2) Resident males
+  - What is the ditribution of Omy5 genotypes in adults vs youngs ?
+    --> Espect a residency effect.
+  - Juvenile RR families will be rare and small (and we may find a resident mother), 
+    while AR individuals and families will be excessively common.
+  - Does Omy5 genotype (i.e anadromous behavior) influence family size?
+  - Does Omy5 genotype influence lifetime reproductive success? 
+    ** Just for individuals that we see as YOY and don't appear after (i.e dead) **
+    ** Maybe mostly resident males ? ** 
+
+Omy5 -- Hypotheses:
+
+ -We will identify many more fathers than mothers among the residents.
+    -- this follows from the known female bias in andromy.
+    -- sex ratios in various cohorts also interesting to compare.
+
+ Siblings will be spatially clustered by reach within the creek.
+    --the Upper Big creek reach is 750m, diveded into 25m shocking sections.
+
+  The most interesting inference will come from comparing distributions of Omy05 genotypes among residents (>150 or 180mm) vs. juveniles, and comparing both with HWE expectations. Omy5 genotypes will reflect sex-dependent dominance of anadomy—Females residents will almost all be RR. Juvenile RR families will be rare and small (and we may find a resident mother), while AR individuals and families will be excessively common.
+
+
+
+
+
+
+  4) Do the summary statistics at some point
+ 
+ 
+ 
+ 
+ 
+                                        LET'S BEGIN !
+  
+  Let's just plot the number of fish caugth per year, with the sex ratio.
+```{r}
+
+FishSex_perYear <- ggplot(data = FullMeta_V4) +
+  aes(x = Coll_year, fill = Sex) +
+  geom_bar() +
+  theme_minimal() 
+ggsave("Distribution of fish collection year, showing sex proprtions.png", plot = FishSex_perYear, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Plots/")
+
+```
+  
+  
+  
+  
+  
+# I) How defining groups influences the parentage ? 
+  
+  
+  
+  I don't remember (20/08/2019) but I may have, in earlier scripts (i.e 1, 2 or 3) checked for Parents-offsprings years incompatibilities. But let's do it again. 
+  
+```{r}
+head(Parentage_meta_Omy_V6)
+Parentage_fuckedUp <- Parentage_meta_Omy_V6 %>% 
+  select(., c(Momsize, Dadsize, Mom, Dad, DadYear, MomYear, LENGTH_kid, Coll_year_kid, kid))
+
+Parentage_fuckedUp_V2 <- Parentage_fuckedUp %>% 
+  mutate(., Size_Incompati = if_else(Momsize <= LENGTH_kid, "Mom2small", if_else(Dadsize <= LENGTH_kid, "Dad2small", "OK" )))
+
+
+```
+  
+
+  
+  
+# II) Family structures and stuff
+
+## A) Check Sex ratio in each dataset too (before parentage and after)
+    
+### 1) Sex ratios before analysis (complete dataset)
+```{r}
+# The complete dataset to take is MetaALLYEARS I think
+
+  # Sex ratio of the 1995 fish 
+Sexratio_total <- MetaALLYEARS %>%
+  group_by(., Sex) %>% 
+  add_count() %>% 
+  ungroup()
+Numfemales <- Sexratio_total %>% 
+  filter(., Sex == "F") %>%
+  select(., n)
+ numf = Numfemales[1,1] / nrow(MetaALLYEARS)
+ numm = (nrow(MetaALLYEARS) - Numfemales[1,1]) / nrow(MetaALLYEARS)
+ 
+numf
+numm
+# Totalsexratio(F:M) for the complete dataset (rounded) = 0.458 Females : 0.542 Males
+
+  
+  # Sex ratio by years
+
+Sexratioyears <- MetaALLYEARS %>%
+  group_by(., Coll_year, Sex) %>% 
+  add_count() %>% 
+  distinct(., Coll_year, Sex, .keep_all = T) %>% 
+  select(., c(Coll_year, Sex, n)) %>% 
+  spread(., Sex, n) %>% 
+  mutate(., Sexratio = F/(M+F))
+
+plot(Sexratioyears$Coll_year, Sexratioyears$Sexratio, xlab = "Years", ylab= "Sex ratio (% females)", main = "Sex ratio per year in 1995 big creek mykiss")
+
+
+View(Sexratio)
+View( )
+```
+
+
+### 2) Sex ratios after analysis (Parentage dataset)
+  
+For Kids and then for parents (with and without uniques, see below)
+  
+#### a) Kids
+```{r}
+# The complete dataset to take is Parentage_meta_Omy_V5 
+ 
+ # Sex ratio of the kiddos
+Sexratio_postparentage <- Parentage_meta_Omy_V5 %>%
+  group_by(., Sex_kid) %>% 
+  add_count() 
+Numfemales_kid <- Sexratio_postparentage %>% 
+  filter(., Sex_kid == "F") %>%  
+  select(., n) 
+ numf_kid = Numfemales_kid[1,2] / nrow(Parentage_meta_Omy_V5)
+ numm_kid = (nrow(Parentage_meta_Omy_V5) - Numfemales_kid[1,2]) / nrow(Parentage_meta_Omy_V5)
+ 
+numf_kid
+numm_kid
+# Total sexratio(proportions F:M) of kids (rounded) = 0.496 Females : 0.504 Males
+
+
+```
+#### b) Parents 
+
+  (some duplicates, i.e involved in more than one trio/SP)
+
+```{r}
+
+ # Sex ratio of the parents (i.e even if the parents are common across different trios/single-pairs !!)
+ # Note that it should be 50% if their was only propper loyal couples
+
+Num_moms <- Parentage_meta_Omy_V5 %>% 
+  select(., Mom) %>% 
+  filter(., !is.na(Mom)) 
+Num_dads <- Parentage_meta_Omy_V5 %>% 
+  select(., Dad) %>% 
+  filter(., !is.na(Dad)) 
+
+totparents <- nrow(Num_moms) + nrow(Num_dads) 
+nrow(Num_moms) / totparents
+nrow(Num_dads) / totparents
+
+# Taking into account the fact that some parents are duplicated here (i.e involved in different trios/SP), we have a   sexratio(F:M) of (rounded) : 0.435 F:M 0.565
+```
+  
+Parents (without duplicates, i.e each parent, regardless of the number of breeding relationship (trio/SP) he is part of, is present only once in the count ! :)
+
+```{r}
+ # Sex ratio of the parents
+ # Note that it should be 50% if their was only propper loyal couples (lol)
+
+Num_moms <- Parentage_meta_Omy_V5 %>%
+  ungroup() %>% 
+  select(., Mom) %>% 
+  filter(., !is.na(Mom)) %>% 
+  distinct(., Mom)
+Num_dads <- Parentage_meta_Omy_V5 %>%
+  ungroup() %>% 
+  select(., Dad) %>% 
+  filter(., !is.na(Dad)) %>% 
+  distinct(., Dad)
+
+totparents <- nrow(Num_moms) + nrow(Num_dads) 
+nrow(Num_moms) / totparents
+nrow(Num_dads) / totparents
+
+# Without the duplicates, we have a   sexratio(F:M) of (rounded) : 0.46 F:M 0.54
+```
+
+### 3) Sex-ratios of kids per year
+    
+```{r}
+Sex_kids_per_year <- Parentage_meta_Omy_V5 %>% 
+  ungroup() %>% 
+  select(., Coll_year_kid, kid, Sex_kid) %>% 
+  group_by(., Coll_year_kid, Sex_kid) %>% 
+  add_count() %>% 
+  distinct(., Coll_year_kid, Sex_kid, n) %>% 
+  spread(., Sex_kid,  n) %>% 
+  rename(., Female = "F", Male = "M") %>% 
+  mutate(., Sex_R_proportions_Females = Female/(Female+Male))
+
+FpkidsPeryear <- ggplot(data = Sex_kids_per_year) +
+  aes(x = Coll_year_kid, y = Sex_R_proportions_Females) +
+  geom_boxplot(fill = "#ef562d") +
+  labs(title = "Evolution of proportion of females among kids through time",
+    y = "Sex ratio (Proportion of females)") +
+  theme_minimal()
+
+ggsave("Evolution of proportion of females among kids through time.png", plot = FpkidsPeryear, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Plots/")
+
+head(Sex_kids_per_year)
+```
+
+
+```{r}
+### THIS DATASET IS JUST TO CALCULATE THE PROPORTION OF FEMALES AMONG PARENTS THROUGH YEARS ###
+Sex_parents_per_year_1 <- Parentage_meta_Omy_V6 %>% 
+  ungroup() %>% 
+  select(., Coll_year_parent_1, parent_1, sex_1) 
+
+nrow(Sex_parents_per_year_1)
+
+Sex_parents_per_year_2 <- Parentage_meta_Omy_V6 %>% 
+  ungroup() %>% 
+  select(.,Coll_year_parent_2, parent_2, sex_2) %>% 
+  rename(., Coll_year_parent_1 = "Coll_year_parent_2", parent_1 = "parent_2", sex_1 = "sex_2" )
+
+Sex_parents_per_year <- bind_rows(Sex_parents_per_year_1, Sex_parents_per_year_2) %>% 
+   filter(., !is.na(parent_1)) 
+Sex_parents_per_year <- Sex_parents_per_year %>% 
+  unique()
+
+ParentsexR_years <- ggplot(data = Sex_parents_per_year) +
+  aes(x = Coll_year_parent_1, fill = sex_1) +
+  geom_bar() +
+  labs(title = "Sex ratios among parents through years",
+    x = "Collection year of parents",
+    y = "Count") +
+  theme_minimal()
+
+ggsave("Evolution of sex ratio in parents through time.png", plot = ParentsexR_years, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Plots/")
+
+View(Parentage_meta_Omy_V6)
+```
+
+
+
+## B) Family sizes
+      
+      I think I did calculate the family sizes somewhere !
+
+
+#### 1) Find some correlations ? 
+      
+      So what could be interesting ? 
+      
+   A)   * Family size X Momsize   (Continuous X Continuous)
+   B)   * Family size X Dadsize   (Continuous X Continuous)
+   C)   * Family size X Collection year      (Continuous X Semi-Continuous)
+   D)   * Family size X MomOmy5   (Continuous X Qualitative)
+   E)   * Family size X DadOmy5   (Continuous X Qualitative)
+      Anything else ?
+      
+      My idea is to do here an Aikake Criterion thing, to see what is affecting the most the family size.
+      
+```{r}
+head(Parentage_meta_Omy_V6)
+View(Parentage_meta_Omy_V6)
+
+Parentage_meta_Omy_V6 <- Parentage_meta_Omy_V5 %>% 
+  mutate(., Momsize = if_else(condition = sex_1 == "F", true = LENGTH_parent_1, false =  LENGTH_parent_2)) %>% 
+  mutate(., Dadsize = if_else(condition = sex_1 == "M", true = LENGTH_parent_1, false =  LENGTH_parent_2)) %>%       
+  mutate(., MomYear = if_else(condition = sex_1 == "F", true = Coll_year_parent_1, false =  Coll_year_parent_2)) %>% 
+  mutate(., DadYear = if_else(condition = sex_1 == "M", true = Coll_year_parent_1, false =  Coll_year_parent_2)) %>% 
+  mutate(., MomOmy5 = if_else(condition = sex_1 == "F", true = Omy_parent_1 , false =  Omy_parent_2)) %>% 
+  mutate(., DadOmy5 = if_else(condition = sex_1 == "M", true = Omy_parent_1, false =  Omy_parent_2))
+
+
+
+esquisse::esquisser(Parentage_meta_Omy_V6)
+
+library(ggplot2)
+
+ggplot(Parentage_meta_Omy_V6) +
+ aes(x = FamilySize_SPtrio) +
+ geom_histogram(bins = 30L, fill = "#0c4c8a") +
+ theme_minimal()
+head(Parentage_meta_Omy_V6)
+
+```
+      
+Tentons un AIC sur nos petits modèles ici. 
+Ask people if that's good ! 
+```{r}
+Lm_FS1 <- lm(formula = FamilySize_SPtrio ~ Momsize , data = Parentage_meta_Omy_V6)
+Lm_FS2 <- lm(formula = FamilySize_SPtrio ~ Dadsize , data = Parentage_meta_Omy_V6)
+Lm_FS3 <- lm(formula = FamilySize_SPtrio ~ as.numeric(MomYear) , data = Parentage_meta_Omy_V6)
+Lm_FS4 <- lm(formula = FamilySize_SPtrio ~ as.numeric(DadYear) , data = Parentage_meta_Omy_V6)
+Lm_FS5 <- lm(formula = FamilySize_SPtrio ~ MomOmy5 , data = Parentage_meta_Omy_V6)
+Lm_FS6 <- lm(formula = FamilySize_SPtrio ~ DadOmy5 , data = Parentage_meta_Omy_V6)
+
+AIC(Lm_FS1, Lm_FS2, Lm_FS3, Lm_FS4, Lm_FS5, Lm_FS6)
+# Maybe I should do logistic models for the last two ? 
+
+
+# Without the single-pairs
+
+Lm_FS1b <- lm(formula = FamilySize_TrioOnly ~ Momsize , data = Parentage_meta_Omy_V6)
+Lm_FS2b <- lm(formula = FamilySize_TrioOnly ~ Dadsize , data = Parentage_meta_Omy_V6)
+Lm_FS3b <- lm(formula = FamilySize_TrioOnly ~ as.numeric(MomYear) , data = Parentage_meta_Omy_V6)
+Lm_FS4b <- lm(formula = FamilySize_TrioOnly ~ as.numeric(DadYear) , data = Parentage_meta_Omy_V6)
+Lm_FS5b <- lm(formula = FamilySize_TrioOnly ~ MomOmy5 , data = Parentage_meta_Omy_V6)
+Lm_FS6b <- lm(formula = FamilySize_TrioOnly ~ DadOmy5 , data = Parentage_meta_Omy_V6)
+
+AIC(Lm_FS1b, Lm_FS2b, Lm_FS3b, Lm_FS4b, Lm_FS5b, Lm_FS6b)
+
+
+```
+The most explanatory variable seems to be the Mom's size here. 
+The second one is when the Mom is caught: But a Pearson test showed that the size and Collection year of the mom are not correlated. 
+The Omy5 genotype doesn't explain a lot like this (I would have expected that AAAA females may have larger family sizes and that this would explain a lot, but it doesn't !)
+Interestingly, in all the models I tested, values of females explained better the family size than values of males, for the same variable (valid for the Size, the Year of collection, and the Omy5 genotype).
+Using the same models but without the Single pairs has a small effect but nothing remarquable.
+
+    Maybe it is still interesting to run some correlation tests: 
+```{r}
+# Maybe some correlation tests
+# 1) Mom size and year of collection
+cor.test(x = Parentage_meta_Omy_V6$Momsize, y = as.numeric(Parentage_meta_Omy_V6$MomYear), method = "pearson")
+# 2) Mom size and Family size
+cor.test(Parentage_meta_Omy_V6$FamilySize_SPtrio, Parentage_meta_Omy_V6$Momsize, method = "p")
+# 3) Dad size and Family size
+cor.test(Parentage_meta_Omy_V6$FamilySize_SPtrio, Parentage_meta_Omy_V6$Dadsize, method = "p")
+# 4) Mom Omy5 genotype and Family size
+
+# 5) Dad Omy5 genotype and Family size
+
+# 6) Family size and loci typed in the kid
+cor.test(Parentage_meta_Omy_V6$FamilySize_SPtrio, Parentage_meta_Omy_V6$`Loci Typed`, method = "p")
+
+
+ CONTINUE THAT LATER  
+ CONTINUE THAT LATER 
+ CONTINUE THAT LATER 
+ CONTINUE THAT LATER 
+ CONTINUE THAT LATER 
+
+ esquisse::esquisser()
+
+
+Subest_parentage_Omy_V6 <- Parentage_meta_Omy_V6 %>% 
+  select(., Momsize, Dadsize, FamilySize_SPtrio, FamilySize_TrioOnly, Mismatches, LOD, MomOmy5, DadOmy5, MomYear, DadYear)
+
+glm.fit <- glm(FamilySize_SPtrio ~ MomOmy5 + DadOmy5 , data = Subest_parentage_Omy_V6, family = binomial)
+
+# This shows nothing interesting. 
+library(corrplot)
+correlations <- cor(Subest_parentage_Omy_V6)
+corrplot(correlations, method="circle")
+
+```
+    Results of correlation tests on the 28/07/2019: 
+    # 1) Mom size and year of collection : Not significant
+    # 2) Mom size and Family size        : Highly Significant
+    # 3) Dad size and Family size        : Highly Significant
+    # 4) Mom Omy5 genotype and Family size : Need to do a glm
+    # 5) Dad Omy5 genotype and Family size : Need to do a glm
+    # 6) Family size and collection year : TO DO 
+    # 7) 
+ 
+ 
+ 
+#### 2) Check average family size per sex. 
+ 
+ Attention c'est un peu douteux cette histoire de taille de famille je suis un peu paumé !! 
+ 
+```{r}
+
+Parental_famsize <- Parentage_meta_Omy_V6 %>% 
+  filter(., !is.na(FamilySize_TrioOnly))
+
+PaternalFamsize <- Conserv_FamiSize_V3 %>% 
+  ungroup() %>% 
+  distinct(., Conserv_FamiSize_V3$Dad, .keep_all =  T)
+mean(PaternalFamsize$FamilySize_A)
+
+MaternalFamsize <- Conserv_FamiSize_V3 %>% 
+  ungroup() %>% 
+  distinct(., Conserv_FamiSize_V3$Mom, .keep_all =  T)
+mean(MaternalFamsize$FamilySize_A)
+
+
+
+head(Parental_famsize)
+head(Parentage_meta_Omy_V6)
+
+
+
+```
+ 
+ 
+ 
+# The end of script 4
+
+
+
+
+
+
+
+
+
+
+

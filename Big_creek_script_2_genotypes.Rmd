@@ -1,0 +1,480 @@
+---
+title: "Without_tidy_franzing_results_BigCreek"
+author: 'Noé Barthelemy'
+date: "2 juin 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+
+
+    !!! Reader: This script is following the script 'Big_creek_genotypes_1' 
+        Its purpose is to make a dataset with infos on the families, etc.
+
+
+
+   So maybe the tidy franz function is not that useful: Let's try to explore data without it!
+   So instead of using it we use directly the "first_filtered_blabla" dataset
+
+
+This file is juste to have the one column format for parents to compute parents per kid later.
+```{r}
+
+tidy_coast_BicCreek_USEFUL <- tidy_franz(First_filtered_BigCreek) %>% mutate(parent_posterior = round(parent_posterior,2))
+head(tidy_coast_BicCreek_USEFUL)
+
+```
+
+
+#### Enrich the results with more metadata
+
+In here we used the tidy_franzed formated dataset to recover sex info, that's all. 
+
+We just want the sex info from the MetagenoALLYEARS_readytotransform3
+!!! DON'T FORGET TO CHANGE THE YEAR IF NECESSARY !!!
+
+```{r}
+JustforSex <- MetagenoALLYEARS_readytotransform3 %>% 
+  select(., c(Sample_ID, Sex)) %>% 
+  rename(., parent = "Sample_ID")
+nrow(JustforSex)
+head(JustforSex)
+
+Enriched_tidy_coast_BicCreek <- tidy_coast_BicCreek_USEFUL %>% 
+  left_join(., JustforSex, by = "parent") %>% 
+  rename(., ParentSex = "Sex")
+
+JustforSex <- JustforSex %>% 
+  rename(., Sample_ID = "parent")
+nrow(JustforSex)
+
+head(Enriched_tidy_coast_BicCreek)
+nrow(Enriched_tidy_coast_BicCreek)
+```
+
+
+SO at this point the result file enriched with sex data is "Enriched_tidy_coast_BicCreek"
+But it has the one column format which is not that useful. 
+
+
+```{r}
+
+View(First_filtered_BigCreek)
+
+# How many Trios ? 
+
+First_filtered_BigCreek %>% 
+  group_by(., TRIOorSP == "Trio") %>% 
+  count()
+
+First_filtered_BigCreek %>% 
+  group_by(., TRIOorSP == "Single_Pair") %>% 
+  count()
+ 
+# On the 26/05/2019, with the full 1995 dataset (ALLYEARS) and the following FRANz line:
+
+# FRANz --mintyped 115 --typingerror 0.005 --hwetestout HWE_test.txt --Nmax 1032             MetagenoALLYEARS_transformed3.csv.txt
+
+   # We have: 
+
+# = 176 Trios
+# = 586 Single_Pairs
+
+
+```
+
+
+ Just to make sure we don't fail something, rename the object.
+```{r}
+
+ALLYEARS_BigCreek_results_29052019 <- First_filtered_BigCreek %>% 
+  rename(., kid = "Offspring") %>% 
+  rename(., parent_1 = "Parent 1") %>% 
+  rename(., parent_2 = "Parent 2")
+
+
+```
+
+
+## How many kids per parent ? 
+
+We use here the dataset transformed by tidyfranz.
+Now we would like to join the info to the regular format dataset.
+```{r}
+
+# We can easily get how many kids a parent had with that dataset.
+# That's a first information, let's not try to combine it with the non tidyfranzed dataset.
+
+tidy_coast_BicCreek_USEFUL_totkidperfish <- tidy_coast_BicCreek_USEFUL %>% 
+  group_by(., parent) %>% 
+  add_count() %>% 
+  filter(., !is.na(parent)) %>% 
+  rename(., Number_of_kids_per_parent = n) %>% 
+  ungroup() 
+View(tidy_coast_BicCreek_USEFUL_totkidperfish)
+nrow(tidy_coast_BicCreek_USEFUL_totkidperfish)
+# This is a nice file, let join it with our metadata
+
+
+# A dataset with one row per fish for the plot
+Forplot <- tidy_coast_BicCreek_USEFUL_totkidperfish %>% 
+  distinct(., kid, .keep_all = T)
+
+esquisse::esquisser()
+
+ggplot(data = Forplot) +
+  aes(x = Number_of_kids_per_parent, fill = TRIOorSP) +
+  geom_histogram(bins = 30) +
+  labs(title = "Distribution of offspring number per parent, in trios and single pairs ",
+    x = "Number of kids per parent",
+    y = "Count") +
+  theme_minimal()
+```
+## Check the sex incompatibilities
+
+Check sex incompatibilites
+```{r}
+XES <- Enriched_tidy_coast_BicCreek %>% 
+  group_by(., kid) %>% 
+  add_count(., ParentSex)
+# No sex incompatibilities !!
+```
+
+## Let's re-join some metadata ?
+
+```{r}
+
+FullMeta_V4_reduced <- FullMeta_V4 %>% 
+  select(., Sample_ID, WATER_NAME, Coll_year, Coll_month, TAG_NUMBER, REPORTED_LIFE_STAGE,  WEIGHT, LENGTH, NMFS_DNA_ID)
+
+# Here are useful metadata. 
+# Join it to the results dataframe.
+# below it is a bit long and stupid but basically it helps to attach the columns for the kids and parents, to keep the track ! 
+
+# The meta from kids
+
+FullMeta_V4_reduced_kids <- FullMeta_V4_reduced %>% 
+  rename(., kid = "Sample_ID")
+colnames(FullMeta_V4_reduced_kids) <- paste(colnames(FullMeta_V4_reduced_kids), "_kid", sep = "")
+FullMeta_V4_reduced_kids <- FullMeta_V4_reduced_kids %>% 
+  rename(., kid = "kid_kid" )
+
+# The meta from parents
+
+FullMeta_V4_reduced_parents <- FullMeta_V4_reduced %>% 
+  rename(., parent = "Sample_ID")
+colnames(FullMeta_V4_reduced_parents) <- paste(colnames(FullMeta_V4_reduced_parents), "_parent", sep = "")
+FullMeta_V4_reduced_parents <- FullMeta_V4_reduced_parents %>% 
+  rename(., parent = "parent_parent" )
+
+# Join these two to our latest results dataset: 
+  
+  # Trick: We need to try to join twice: Once for the parent_1 data, then for the parent_2 data. 
+           #☻ To make the column names match we will rename temporarily the columns in FullMeta_V4_reduced_parents
+
+# 1) Join the kids
+
+Parentage_meta_V1 <- ALLYEARS_BigCreek_results_29052019 %>% 
+  left_join(., FullMeta_V4_reduced_kids, by = "kid") 
+head(Parentage_meta_V1)
+
+# 2) Join parent_1 
+
+     # PLEASE be careful to never use again the "first" and "second" renaming files as we changed the columns name    artificially, for joining purposes, so that the informations of ALL parents are now called parent 1 or 2 ! 
+
+
+First_renaming <- FullMeta_V4_reduced_parents %>% 
+  filter(., parent %in% ALLYEARS_BigCreek_results_29052019$parent_1)
+   # Ok first I was surprised to see that there was only 506 observations in 'First_renaming' (i.e less than the 792rows of parent one!) but it is just because in the 792 Parent_1 there are some families and thus duplicated parents
+
+colnames(First_renaming) <- paste(colnames(First_renaming), "_1", sep = "")
+
+Parentage_meta_V2 <- Parentage_meta_V1 %>% 
+  left_join(., First_renaming, by = "parent_1")
+
+# 3) Join parent_2 
+
+     # PLEASE be careful to never use again the "first" and "second" renaming files as we changed the columns name    artificially, for joining purposes, so that the informations of ALL parents are now called parent 1 or 2 ! 
+
+
+Second_renaming <- FullMeta_V4_reduced_parents %>% 
+  filter(., parent %in% ALLYEARS_BigCreek_results_29052019$parent_2)
+
+colnames(Second_renaming) <- paste(colnames(Second_renaming), "_2", sep = "")
+
+Parentage_meta_V3 <- Parentage_meta_V2 %>% 
+  left_join(., Second_renaming, by = "parent_2")
+
+head(Parentage_meta_V3)
+View(Parentage_meta_V3)
+View(Second_renaming)
+
+```
+
+It's a bit tricky and I'm sure there is a better way to do it but anyway no one will read that script so ...
+the goal is to get as much data as we can in the same dataset.
+
+Let's do the same procedure as above with Just_for_sex for the sex info and with tidy_coast_BicCreek_USEFUL_totkidperfish for the number of kids per parent : 
+
+Easy: Filter the parents 1 from the dataset you want to add, temporarily rename the parent column to use it as a key to join it to the Parentage_meta_V3 (the dataset of destination)  and then join it, and repeat the procedure for the parents_2 ! 
+
+!! WARNING: Because of this stupid two row per fish format, observations are not unique per parent, if you see what I mean. Thus you can join only for info that is shared for a parent with his kids: For example, the sex of the dad will be male whatever kid row you are looking at, however the LOD for the dad will vary among his kids ! !!! 
+
+```{r}
+# Just for sex 
+Sex_for_parents_1 <- JustforSex %>% 
+  filter(., parent %in% Parentage_meta_V3$parent_1) %>% 
+  rename(., parent_1 = "parent") %>% 
+  rename(., sex_1 = "Sex")
+
+Sex_for_parents_2 <- JustforSex %>% 
+  filter(., parent %in% Parentage_meta_V3$parent_2) %>% 
+  rename(., parent_2 = "parent") %>% 
+  rename(., sex_2 = "Sex")
+
+# Tot kid per fish
+tidy_coast_BicCreek_USEFUL_totkidperfish_parent_1 <- tidy_coast_BicCreek_USEFUL_totkidperfish %>% 
+  filter(., parent %in% Parentage_meta_V3$parent_1) %>% 
+  rename(., parent_1 = "parent") %>% 
+  distinct(., parent_1, .keep_all = T) %>% 
+  select(., parent_1, Number_of_kids_per_parent) %>% 
+  rename(., Number_of_kids_1 = "Number_of_kids_per_parent")
+
+tidy_coast_BicCreek_USEFUL_totkidperfish_parent_2 <- tidy_coast_BicCreek_USEFUL_totkidperfish %>% 
+  filter(., parent %in% Parentage_meta_V3$parent_2) %>% 
+  rename(., parent_2 = "parent") %>% 
+  distinct(., parent_2, .keep_all = T) %>% 
+  select(., parent_2, Number_of_kids_per_parent) %>% 
+  rename(., Number_of_kids_2 = "Number_of_kids_per_parent")
+
+
+# Join all that to our parentage dataset !
+
+Parentage_meta_V4 <- Parentage_meta_V3 %>% 
+  left_join(., Sex_for_parents_1, by = "parent_1") %>% 
+  left_join(., Sex_for_parents_2, by = "parent_2") %>% 
+  left_join(., tidy_coast_BicCreek_USEFUL_totkidperfish_parent_1, by = "parent_1") %>% 
+  left_join(., tidy_coast_BicCreek_USEFUL_totkidperfish_parent_2, by = "parent_2")
+
+View(Parentage_meta_V4)
+
+# Create a column "Mom" and "Dad" to compute later family sizes. 
+
+Parentage_meta_V5 <- Parentage_meta_V4 %>% 
+  mutate(., Mom = ifelse(sex_1 == "F", parent_1, parent_2 )) %>% 
+    mutate(., Dad = ifelse(sex_1 == "M", parent_1, parent_2 ))
+
+
+```
+
+
+
+# The last information: FAMILY SIZE ! 
+
+  Let's be conservative and define a family as two parents and their kids, not one parent and their kids! 
+  So we get the Single pairs out of here ! 
+
+  Let's then compute this info.
+  
+  
+```{r}
+            ## !!!! THE DATASET CONSERV_FAMISIZE_V1 DOESN'T INCLUDE SINGLE-PAIRS !!!! ## 
+
+Conserv_FamiSize_V1 <- Parentage_meta_V5 %>% 
+  filter(., TRIOorSP =="Trio") %>% 
+  group_by(., Mom, Dad) %>% 
+  add_count() %>% 
+  rename(., FamilySize_TrioOnly = "n") %>% 
+  ungroup() %>% 
+  select(., kid, FamilySize_TrioOnly)
+
+
+  # We still include family size with the SP, it may be useful to compare with an without later.
+
+Parentage_meta_V6 <- Parentage_meta_V5 %>% 
+  group_by(., Mom, Dad) %>% 
+  add_count() %>% 
+  rename(., FamilySize_SPtrio = "n") %>% 
+  ungroup()
+
+
+  # Attach also the familisize info for trios only, to not have to go back to this script later. 
+
+Parentage_meta_V7 <- Parentage_meta_V6 %>% 
+  left_join(., Conserv_FamiSize_V1, by = "kid")
+  
+esquisse::esquisser()
+
+```
+
+We have the family sizes now. However, we don't want to atatch that to our main dataset as there are only trios in here. It will be useful for a plot or two maybe. Or maybe we can attach it, it can't hurt I suppose. 
+
+
+
+
+# Is everyone here ?
+```{r}
+nrow(Parentage_meta_V7) == nrow(First_filtered_BigCreek)
+```
+
+# A few questions to be solved at some point: 
+
+1) Why all parents 2 have no tags? And no Weight ? 
+
+I'm not really sure of that, I suppose it is because of chance ... ^^
+
+
+2) Some kids may be the parents of their parents and their parents their offsprings ... interesting.
+
+What I can do is go back to FRANz and do a mini test: Take ones that you are sure to not be offsprings 
+(like big fish from 2010, 2011, 2012) in a dataset, small fish that you know they can't be parents of those big older guys, ARTIFICIALLY define the big as youngs in FRANz and the young as old ! 
+
+Also, you may try to do that with fish of close years. 
+
+I created a script to do a test in FRANz, as described above. The script is called "Can_parents_be_confounded_with_offsprings"
+
+
+
+              USE "Parentage_meta_V7" AT THE BEGINNING OF SCRIPT 3
+
+  
+                      END OF SCRIPT 
+                      END OF SCRIPT 
+                      END OF SCRIPT 
+                      END OF SCRIPT 
+                      END OF SCRIPT 
+                      END OF SCRIPT       
+            
+
+
+
+
+
+
+
+
+
+
+  U       U       U       U       U       U       U       U       U       U       U       U       U
+   S       S       S       S       S       S       S       S       S       S       S       S       S
+    E       E       E       E       E       E       E       E       E       E       E       E       E
+     L       L       L       L       L       L       L       L       L       L       L       L       L
+      E       E       E       E       E       E       E       E       E       E       E       E       E
+       S       S       S       S       S       S       S       S       S       S       S       S       S
+        S       S       S       S       S       S       S       S       S       S       S       S       S
+
+
+
+
+
+
+
+   ### VOIS SI TU PEUX RECYCLER LE CHUNK SUIVANT OU PAS : 
+
+# Let's check the Family sizes !!
+Check the family sizes: what is the strategy ? 
+If I filter out the males, group by parent and add_count the kids, It should work !
+Then I do the same for females and I'll have the number of families and I could even plot their distrib. 
+If we define a family by common kids of two individuals or kids of a single pair. 
+```{r}
+# Sires firts
+Familyguys <- ALLYEARS_BigCreek_results_29052019 %>% 
+  filter(., !ParentSex == "F") %>% 
+  add_count(parent) %>% 
+  rename(., Number_of_kids = n)
+
+# Dams after
+WomensPower <- ALLYEARS_BigCreek_results_29052019 %>% 
+  filter(., !ParentSex == "M") %>% 
+  add_count(parent) %>% 
+  rename(., Number_of_kids = n)
+
+# How many families ? 
+FAMILIES <- ALLYEARS_BigCreek_results_29052019 %>% 
+  group_by(kid) %>% 
+    distinct(., kid, .keep_all = T) %>% 
+  ungroup() %>% 
+  distinct(parent, .keep_all = T)
+
+nrow(FAMILIES)
+head(FAMILIES)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+A plot for FAMILIES
+```{r}
+Malesmales <- Familyguys %>% 
+  distinct(., parent, .keep_all = T)
+Femalesfemales <- WomensPower %>% 
+  distinct(., parent, .keep_all = T)
+
+# Do some subset to plot the abline of distribution of SP vs TRIO
+SPmales <- Familyguys %>% 
+  filter(., TRIOorSP == "Single_Pair")
+SPfemales <- WomensPower %>% 
+  filter(., TRIOorSP == "Single_Pair")
+SPdistrib <- rbind(SPmales, SPfemales) %>% 
+  distinct(., parent, .keep_all = T)
+
+Triomales <- Familyguys %>% 
+  filter(., TRIOorSP == "Trio")
+Triofemales <- WomensPower %>% 
+  filter(., TRIOorSP == "Trio")
+Triodistrib <- rbind(Triomales, Triofemales)
+Triodistrib <- Triodistrib %>% 
+  distinct(., parent, .keep_all = T)
+
+nrow(Triomales)
+nrow(Triofemales)
+
+# The kolmogorov smirnov test ! 
+Zgeg1 <- Malesmales$Number_of_kids
+Zgeg2 <- Femalesfemales$Number_of_kids
+ks.test( Zgeg1, Zgeg2, alternative = "two.sided")
+
+# The kolmogorov smirnov test ! For trio vs SP
+Zgeg11 <- Triodistrib$Number_of_kids
+Zgeg22 <- SPdistrib$Number_of_kids
+ks.test( Zgeg11, Zgeg22, alternative = "two.sided")
+
+  # I don't even remember what it tests
+
+
+FAMILYPLOT <-    ggplot(Malesmales,aes(x= Number_of_kids))+ 
+    geom_histogram(data=subset(Malesmales, ParentSex=='M'),aes(fill=ParentSex),alpha=0.4, stat = "density")+
+    geom_histogram(data=subset(Femalesfemales,ParentSex=='F'),aes(fill=ParentSex),alpha=0.4,  stat = "density")+
+    geom_density(data=subset(Triodistrib), aes(x= Number_of_kids, color = TRIOorSP)) + 
+    geom_density(data=subset(SPdistrib), aes(x= Number_of_kids, color = TRIOorSP ))+
+    ylim(0, 1) +
+    scale_fill_manual(name="ParentSex", values=c("gold","black"),labels=c("Males","Females")) +
+    scale_color_discrete(name = "Assignment type", labels=c("Trio","Single-Pair") )
+    
+
+ggsave(filename = "FamilySize.jpeg" ,plot =  FAMILYPLOT , device = 'jpeg', path = 'D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Results/Plots/' )
+
+
+ http://www.sthda.com/english/wiki/ggplot2-histogram-easy-histogram-graph-with-ggplot2-r-package
+ #list of colors: 
+   http://www.stat.columbia.edu/~tzheng/files/Rcolor.pdf
+   
+```

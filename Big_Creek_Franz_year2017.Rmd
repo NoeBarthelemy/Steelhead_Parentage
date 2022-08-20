@@ -1,0 +1,99 @@
+---
+title: "Big_Creek_FRANz_Year2017"
+author: 'Noé Barthelemy'
+date: "26 mai 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+ THIS SCRIPT IS NOT FULL ENOUGH ! Take the good parts in the "Big Creek genotypes" RMD. 
+
+
+- Define groups of parents and kids troughout the years. 
+- The ones under 80mm FL are juveniles (YOY) : easy.
+- The big-tagged individuals are necessarily adults (>100mm). 
+- The logic is: 
+YOY individuals from year X should be the offspring of individuals from X-1.
+--> Apply this logic with plenty of small analysis and you should find all the trios and pairs.
+
+- Then don't forget to compare datasets to check for parents who came and spawned during several years. 
+
+
+
+### A group of parents and a group of kidos: YEAR 2017 
+
+The goal of this section is to create a suitable dataset for FRANZ. 
+For the other years, you will just have to replace 2017 by 2016, etc etc. 
+
+Select the YOY from year X (i.e the offsprings)
+The threshold is set at 80mm. Change it if you want !
+
+```{r}
+Meta2017 <- FullMeta_V4 %>% 
+  filter(., Coll_year == 2017) %>% 
+  filter(., LENGTH <= 80)
+head(Meta2017)
+```
+
+Associate these offsprings with the corresponding genotype. 
+```{r}
+Geno2017 <- gtseq7.12_ubc_hap2col_current_vcf.txt %>% 
+  filter(., indiv.ID %in% Meta2017$indiv.ID)
+head(Geno2017)
+```
+We have `r nrow(Meta2017)` metadata fish and `r nrow(Geno2017)` genotype fish: Is it equal ?
+
+Do a final table with both combined.
+```{r}
+Metageno2017 <- Meta2017 %>% 
+  left_join(., Geno2017, by = "indiv.ID" )
+```
+Nice table, almost ready. 
+Because the Franz input requires each field of the input to be less than 10 characters,
+you need to transform :
+  1) The sample.ID
+  2) The tag_id
+The good thing is here we can use Sample_ID instead, that has the good format :) 
+
+But we still need to get rid of all the useless info!
+```{r}
+Metageno2017_readytotransform <- Metageno2017 %>% 
+  select(., - c(GtSeq_Run, indiv.ID, Sample_Plate, Sample_Well,I7_Index_ID, index, I5_Index_ID, index2 , Sample_Project, NMFS_DNA_ID, NMFS_DNA_ID...23, Plate...11, ...12, ...13, Plate...14, Plate...13, Plates, BOX_ID, BOX_POSITION, SAMPLE_ID, BATCH_ID, PROJECT_NAME, GENUS, SPECIES, LENGTH, WEIGHT, SEX, AGE, REPORTED_LIFE_STAGE, PHENOTYPE, HATCHERY_MARK, TAG_NUMBER, Coll_month, Coll_day, ESTIMATED_DATE, PICKER, PICK_DATE, LEFTOVER_SAMPLE, SAMPLE_COMMENTS, STATE_F, COUNTY_F, WATERSHED, TRIB_1, TRIB_2, WATER_NAME, REACH_SITE, HATCHERY, STRAIN, LATITUDE_F, LONGITUDE_F, LOCATION_COMMENTS_F, group))
+
+# Ouah I forgot there was so many useless info ...
+# Let's arrange the table so the order of the column is right. 
+
+Metageno2017_readytotransform2 <- Metageno2017_readytotransform %>% 
+  select(., Sample_ID, everything())
+
+# And finally change the names of loci from tag_id to Omy.
+names(Metageno2017_readytotransform2) <- gsub(x = names(Metageno2017_readytotransform2), pattern = "tag_id", replacement = "Omy") 
+
+head(Metageno2017_readytotransform2)
+nrow(Metageno2017_readytotransform2)
+ncol(Metageno2017_readytotransform2)
+
+ 
+
+```
+BOUM that's it ! 
+
+
+So I still didn't figure out how to deal with the year of birth etc, maybe we will do a fake column after, meanwhile, let's take out the Coll_Year
+```{r}
+
+Metageno2017_readytotransform3 <- Metageno2017_readytotransform2 %>% 
+  select(., - c(Coll_year, Pop))
+head(Metageno2017_readytotransform3)
+```
+
+We will now write the csv file.
+```{r}
+write_csv(Metageno2017_readytotransform3, path = 'C:/Users/noeba/Desktop/FRANZ_stuff/To_transform/Metageno2017_readytotransform3.csv' )
+
+```

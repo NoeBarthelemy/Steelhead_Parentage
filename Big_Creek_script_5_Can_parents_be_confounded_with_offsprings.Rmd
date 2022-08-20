@@ -1,0 +1,232 @@
+---
+title: "Script_5_Can_parents_be_confounded_with_offsprings"
+author: 'Noé Barthelemy'
+date: "13 juin 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Aim of the script
+
+The aim of this script is to check if by doing a soup of fish (putting all the fish genotypes in FRANz without specifying any age), old big fish can be assigned as parents of young small fish.
+
+
+### Important: This script need to run first the "Big_creek_genotypes_script_1.rmd" script first, and the "Big_creek_genotypes_script_2.rmd"
+
+
+## Find obvious mistakes first
+
+Although, I can also try to find obvious mistakes in my dataset, eg. a fish caught in 2013 as a YOY and assigned as parent of a big fish from 2010 ! 
+
+```{r}
+# Select the variables of interest
+
+Impostor_kids_V1 <- Parentage_meta_V4 %>% 
+  select(., kid, parent_1, parent_2, Coll_year_kid, REPORTED_LIFE_STAGE_kid, LENGTH_kid, Coll_year_parent_1, REPORTED_LIFE_STAGE_parent_1, LENGTH_parent_1, Coll_year_parent_2, REPORTED_LIFE_STAGE_parent_2, LENGTH_parent_2, TRIOorSP)
+head(Impostor_kids_V1)
+
+# Filter the kids collected before their supposed parents
+
+Impostor_kids_V2 <- Impostor_kids_V1 %>% 
+  filter(., Coll_year_kid <= Coll_year_parent_1)
+
+
+head(Impostor_kids_V2)
+
+
+```
+
+
+### Now let's create the fake dataset: 
+# Strategy
+
+What I can do is go back to FRANz and do a mini test: Take ones that you are sure to not be offsprings 
+(like big fish from 2010, 2011, 2012) in a dataset, small fish that you know they can't be parents of those big older guys, ARTIFICIALLY define the big as youngs in FRANz and the young as old ! 
+
+*** We start with the dataset "MetagenoALLYEARS_readytotransform3" created in script 1. 
+--> But we do the selection with the original metageno dataset, it's more complete.
+
+
+```{r}
+# The big old parents that are going to be designated as offsprings. 
+Big_fish <- MetagenoALLYEARS %>% 
+  filter(., LENGTH >= 100) %>% 
+  filter(., Coll_year <= 2012)
+  
+# The young small offsprings that we are going to use for the fake parental pool!
+# Notice that we separate the datasets from one year (2012 to 2013) to avoid tricky overlappings that we couldn't say if they are true or fake! 
+
+Small_fish <- MetagenoALLYEARS %>% 
+  filter(., !LENGTH >= 100) %>% 
+  filter(., !Coll_year <= 2013)
+  
+Fake_OldKids_Youngparents_v1 <-  MetagenoALLYEARS_readytotransform3 %>% 
+  mutate(., age = if_else(Sample_ID %in% Big_fish$Sample_ID, "2010", if_else(Sample_ID %in% Small_fish$Sample_ID, "2000", "Discard"))) %>% 
+  filter(., !age == "Discard") %>% 
+  select(., age, everything()) %>% 
+  select(., Sample_ID, everything())
+  
+
+# Just to check we discarded the right fish ! 
+  discardedfish <- Fake_OldKids_Youngparents_v1 %>% 
+    filter(., age == "Discard")
+  Metadiscardedfish <- MetagenoALLYEARS %>% 
+    filter(., Sample_ID %in% discardedfish$Sample_ID)  
+
+## Finally, whats is the Nmax here ? 
+  Nmaxfortest <- Fake_OldKids_Youngparents_v1 %>% 
+    filter(., age == 2000 & Sex == "M")
+  nrow(Nmaxfortest)
+  
+  head(Nmaxfortest)
+  head(MetagenoALLYEARS_readytotransform2)
+  head(Fake_OldKids_Youngparents_v1)
+  nrow(Fake_OldKids_Youngparents_v1)
+```
+
+
+We will now write the csv file.
+```{r}
+write_csv(Fake_OldKids_Youngparents_v1, path = 'C:/Users/noeba/Desktop/FRANZ_stuff/Test_Oldkids_YoungParents/To_transform/Fake_OldKids_Youngparents_v1.csv' )
+
+```
+
+###### AFTER THE CREATION OF THE CSV FILE FOR FRANZ:
+
+ IMPORTANT STEP 
+!!! Replace all 'NA' by '?' in the file to transform !! 
+
+
+
+Then transform the input thanks to FRANz website tool:  
+http://www.bioinf.uni-leipzig.de/Software/FRANz/CSV_Import.html 
+
+** Then pick the transformed 'file' made by the website with ctrl+A and copy it into the txt file of the transformed folder. 
+** (Or in any folder you want, just take one)
+      
+  ###
+  ###    But be careful !! 
+  ###    If you relaunch FRANz he will replace the files each time :)
+  ###
+           
+## Run Franz
+
+The manual is here : https://www.bioinf.uni-leipzig.de/Software/FRANz/FRANz2.pdf
+
+  THE OPTIONS 
+ 
+ 1) --mintyped 115            :  This will not change
+ 2) --typingerror 0.005       :  Same
+ 3) --hwetestout HWE_test.txt :  To have the HWE test
+ 4) --Nmax XXX                :  We saw just above that the Nmax here is 309. 
+ 5) --fullsibtest             :  To detect fullsibs
+ 6) --fullsibparental         :  Same, in the parental pool.
+ 7) --malerepro 15:200        :  Because you don't want the fish of age 10 (fake offsprings) to be assigned as                                         parents. 
+ 8) --femrepro 15:200         :  Same. 
+ 
+ Then here is the command line on windows 10 for running FRANz:
+
+
+           FRANz --mintyped 115 --typingerror 0.005 --hwetestout HWE_test.txt --fullsibtest --fullsibparental --malerepro 5:200 --femrepro 5:200 --Nmax 309 Fake_OldKids_Youngparents_v1_Transformed_21082019.txt
+
+ So I inputed the femrepro and malerepro options to 5:200 so that the fish of age 10 (fake offsprings) cannot be assigned as parents. 
+
+Then the results arrive in the folder where the analysed files was.
+Move ALL the files of that folder into a dedicated result folder.
+
+#### Read the parentage file of the test 
+
+This is one of FRANz outputs
+Again, change Metageno2017 by the name of the new result folder. 
+    (In the object AND in the path!)
+
+```{r}
+FakeRun_test_results <- read_csv("C:/Users/noeba/Desktop/FRANZ_stuff/Test_Oldkids_YoungParents/Results/parentage.csv")
+
+head(FakeRun_test_results)
+```
+
+ READER: So here we are just trying to see is there was some assignments and why 
+
+```{r}
+#Create a minimeta for kids
+Minimeta_kids <- Minimeta_V4 
+colnames(Minimeta_kids) <- paste(colnames(Minimeta_kids), "_kid", sep = "")
+Minimeta_kids <- Minimeta_kids %>% 
+  rename(., Sample_ID = "Sample_ID_kid")
+
+Minimeta_Parent1 <- Minimeta_V4 
+colnames(Minimeta_Parent1) <- paste(colnames(Minimeta_Parent1), "_parent1", sep = "")
+Minimeta_Parent1 <- Minimeta_Parent1 %>% 
+  rename(., `Parent 1` = "Sample_ID_parent1")  
+
+
+
+FakeRun_test_results_V2 <- FakeRun_test_results %>% 
+    filter(., !is.na(`Parent 1`)) %>% 
+    mutate(., TRIOorSP = if_else(is.na(`Parent 2`), "Single_Pair", "Trio")) %>% 
+    rename(., Sample_ID = "Offspring") %>% 
+    left_join(., Minimeta_kids, by ="Sample_ID") %>% 
+    rename(., kid = "Sample_ID") %>% 
+    left_join(., Minimeta_Parent1, by = "Parent 1") 
+
+
+    rename(., kid = "Sample_ID") 
+
+View(FakeRun_test_results_V2)
+
+```
+
+CONCLUSION: 
+
+This test resulted in the assignments of 17 single-pairs on a dataset of 795 fish (parents and offsprings). These had a LOD-score going from 9 to 54. Some had mismatches, some not. Only 2 / 17 had a posterior probability of less than 0.95 (which is what we would reject with our actual filters). 
+Worth noting that: 
+Reassuring
+Worrying
+No trios were assigned
+Many are assigned with a high probability
+Giving the age info to FRANz may have produced strong assignments that would have had a much lower probability or would have been rejected by FRANz otherwise. 
+The high “statistical power” that we have with our marker is not sufficient to overcome the problem of closely related individuals. 
+There are only 17 assignments. 
+17 is still too much ! 
+
+# Then we skyped with Devon. 
+
+# So we are Ok about that. 
+
+
+# Last thing: Check if those 17 pairs can be found in the current parentage dataset! 
+
+Currently, the last dataset is SibsAndParentage_V3 (08 April 2020).
+
+```{r}
+Fake17_disappeared <- SibsAndParentage_V3 %>% 
+  filter(., kid %in% FakeRun_test_results_V2$kid)
+
+nrow(Fake17_disappeared)
+```
+Hoho !! So we still find two ! 
+But wait, do they have the same parents? 
+```{r}
+Fake17_disappeared
+```
+```{r}
+FakeRun_test_results_V2_check <- FakeRun_test_results_V2 %>% 
+  filter(.,  kid %in% Fake17_disappeared$kid)
+FakeRun_test_results_V2_check
+```
+
+So none of them are found ! Now, this doesnt' mean we don't have other problems with our new assignments though !
+
+
+--------------- END --------------------
+
+
+
+
+
+
+

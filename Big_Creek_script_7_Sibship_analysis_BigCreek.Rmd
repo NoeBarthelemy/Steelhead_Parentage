@@ -1,0 +1,1229 @@
+---
+title: "Sibship_analysis_BigCreek"
+author: 'Noé Barthelemy'
+date: "13 septembre 2019"
+output: html_document
+---
+
+
+                        SIBSHIP ANALYSIS IN OUR 1995 FISH FROM BIG CREEK
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+ WARNING: This script requires to run script "Identify_duplicates_in_1995_BCmykiss" 
+Then, from analysis Version two, Script one requires this script to run, so they are a bit interdependent!
+
+#  Library
+
+```{r}
+library(tidyverse)
+library(Rcpp) 
+library(rcolony)
+library(esquisse)
+library(ggplot2)
+```
+
+# I) Introduction 
+
+ GOAL : Identify sibships in our dataset and input them to FRANz ! 
+
+
+## A) Word from Devon : 
+You should already be able to identify siblings that have the same inferred parent or parents, but you could do an independent sibship analysis that could capture sibgroups for which we didn't sample either parent, and also provide a concordant demonstration of the sibgroups you identified with parentage. And of course you expect full sibling YOY to be captured in the same year since we don't expect the same parent pair to mate multiple times (but that would be cool to find!) 
+
+## B) Biological inferences
+
+-- We can then see if the siblings stay together in the river or not ! 
+-- We can see if some parents have mated together in several years 
+
+Anyway, we are not going to mix things too much: We will do the analysis here and then 
+
+## C) Software choice
+
+We have two major software choice: 
+1) COLONY V2
+2) KINALYZER 
+(https://onlinelibrary.wiley.com/doi/full/10.1111/j.1755-0998.2009.02562.x?casa_token=sWLXsnBh490AAAAA%3A2mZ30_TihT0at1kzAU0x-v9xA-Kz-iV6NZwKlWtxzHcVzx7yv_re44kkseqfX0Csed2zoX8jtcSKhq4)
+
+
+                                      ####### COLONY V2 #######
+                                      ####### COLONY V2 #######
+                                      ####### COLONY V2 #######
+                                      ####### COLONY V2 #######
+                                      ####### COLONY V2 #######
+
+Allow inbreeding 
+Put sex info 
+Select out the duplicates from "Duplicates_to_remove_CERVUS"!
+
+# II) Run Colony
+
+## A) Input dataset
+
+We can use the file used for Cervus as an input (gtseq7-12_ubc_hap2col_current_vcf.vcf.txt), but we need to remove the duplicated individuals before ! 
+
+```{r}
+gtseq7_12_ubc_hap2col_current_vcf_vcf <- read_delim("D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Data/gtseq7-12_ubc_hap2col_current_vcf.vcf.txt", "\t", escape_double = FALSE,  trim_ws = TRUE)
+
+```
+
+## B) Remove duplicated individuals 
+
+```{r}
+
+For_Colony_Sibship_Noduplicates <- gtseq7_12_ubc_hap2col_current_vcf_vcf %>% 
+  mutate(., Sample_ID = str_replace_all(indiv.ID, "steelhead", "SH_")) %>%
+  select(., Sample_ID, everything()) %>% 
+  select(., -c(indiv.ID, group)) %>% 
+  filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove) %>% 
+  mutate_all(~replace(., is.na(.), 0))
+
+nrow(For_Colony_Sibship_Noduplicates)
+head(For_Colony_Sibship_Noduplicates)
+```
+
+We will need to do several runs, and identify the sibships by years I think. 
+
+Like maybe try to detect sibships in YOYs cohorts of 2010, 2011 ,2012 etc etc, with a set of parents defined each time. 
+
+But for now let's just put every one as candidate offspring and everyone as candidate parent !
+
+
+
+```{r}
+nrow(For_Colony_Sibship_Noduplicates)
+
+write_csv2(For_Colony_Sibship_Noduplicates, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Data/Clones_removed/gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates.csv")
+```
+1809
+
+## C) Run one 
+
+
+ Some notes about this analysis: 
+ 
+ I will first try a very basic one called "Run_Try_1". 
+ I will specify below two things first: 
+ 
+ 1) The dataset used, how it is split in Candidate mothers/fathers or Offsprings. 
+ 2) The parameters used. 
+                                        
+                                        
+        1) What dataset we use and how we split it: 
+
+> From Colony user guide: 
+
+Violation of these assumptions (candidates parents are unrelated, markers are neutral and on HWE etc) may lower the power of the analysis, but could be compensated by using more informative markers (Wang 2004). For example, the information about the sex and age of the sampled individuals might be unavailable. In such a case, each individual is allowed to appear in all 3 sub-samples and the sibship and parentage are still inferred satisfactorily in some cases (Wang & Santure 2009).
+
+--> So as we don't have the age data we will try something simple: Just put everyone in the software without information except candidate males and females. 
+    Then we will create the script to analyse COLONY parentage data and we will check if: 
+    
+    A) Assigned parents don't have contradictory Omy5 haplotype. 
+    B) If the sibship groups are 'coherent' (i.e caught same time or at least with no obvious length/year caught incoherences)
+    
+The file with the genotypes is called “gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates.csv” and has the duplicates identified by CERVUS removed (see script "Identify_duplicates_in_1995_BCmykiss").
+
+
+        
+        2) What options do we use for "Run_Try_1"
+
+(1) Mating system-I: Female polygamy + Male polygamy
+(2) Mating system-II: With inbreeding + Without clones (Because we removed them!)
+(4) Length of run: Medium
+(5) Analysis method: FL (slowest but most accurate method)
+(6) Likelihood precision: High
+(7) Update allele frequency: No (We may try later?)
+(8) Sibship size scaling: Yes (Default, modify only if you see a large sibship group being split)
+(10) Random number seed: 1234 (default). You can change it and see if it affects results ... 
+(11) Sibship size prior: Default (1)
+
+Number of markers: 124 
+Allele freq: Unknown
+
+Number of Offsprings = 1809 (Could be anyone)
+Offsprings genotypes = gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates-COLONY_V2 OFFSPRING.txt 
+
+### 1) Candidate males genotypes 
+
+Number of Candidate fathers = 957 (Calculated below)
+ Candidate fathers genotypes = See below
+  Prob of a dad in candidates = Let's say 0.5
+```{r}
+# MetagenoALLYEARS_Nodup is the version of MetagenoALLYEARS but with the 186 clones removed :) 
+MetagenoALLYEARS_Nodup %>% filter(.,Sex == "M")  %>% nrow(.)
+```
+Let's create a dataset with all the males! 
+```{r}
+Candidate_fathers_withmeta <- MetagenoALLYEARS_Nodup %>% filter(., Sex == "M")
+
+Candidate_fathers_forColony <- For_Colony_Sibship_Noduplicates %>% 
+  filter(., Sample_ID %in% Candidate_fathers_withmeta$Sample_ID) 
+  
+write_delim(Candidate_fathers_forColony, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Data/Clones_removed/gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates_candidateFathers.csv", delim = "\t", col_names = F)
+```
+ 
+### 2) Candidate females genotypes 
+
+Number of Candidate Mothers = 852 (Calculated below)
+ Candidate mothers genotypes = No file loaded for this try! We will give the sex info in Run two !   
+ Prob of a mom in candidates = Let's say also 0.5 
+```{r}
+MetagenoALLYEARS_Nodup %>% filter(.,Sex == "F") %>% nrow(.)
+```
+Let's create a dataset with all the females! 
+```{r}
+Candidate_mothers_withmeta <- MetagenoALLYEARS_Nodup %>% filter(., Sex == "F")
+ 
+Candidate_mothers_forColony <- For_Colony_Sibship_Noduplicates %>% 
+  filter(., Sample_ID %in% Candidate_mothers_withmeta$Sample_ID)
+ 
+write_delim(Candidate_mothers_forColony, path = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Data/Clones_removed/gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates_candidateMothers.csv", delim = "\t", col_names = F)
+```
+ 
+
+Known paternal sibship/paternity: We know nothing, Jon Snow.
+Excluded paternity : Same thing for now ! 
+ (Same things for all the "excluded blabla")
+ 
+ 
+ 
+ 
+ 
+☼☼☼☼☼☼☼☼>>>
+☼☼☼☼☼☼☼☼>>>    LETS RUN COLONY !!!!!   ☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼☼>>>>>>>>>>>>>>>>>
+☼☼☼☼☼☼☼☼>>>
+
+
+## D) Run number two !
+
+(This is what anthony run on his machine.)
+
+Here we calculated the good numbers of candidates. Maybe you have to write different csv with those!
+
+  (Some redundancy with above)
+
+Number of Candidate fathers = 957 (Calculated below)
+ Candidate fathers genotypes = gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates-COLONY_V2 OFFSPRING.txt 
+```{r}
+# MetagenoALLYEARS_Nodup is the version of MetagenoALLYEARS but with the 186 clones removed :) 
+MetagenoALLYEARS_Nodup %>% filter(.,Sex == "M") %>% nrow(.)
+```
+
+Number of Candidate Mothers = 852 (Calculated below)
+ Candidate mothers genotypes = gtseq7_12_ubc_hap2col_current_vcf_vcf_Noduplicates-COLONY_V2 OFFSPRING.txt 
+```{r}
+MetagenoALLYEARS_Nodup %>% filter(.,Sex == "F") %>% nrow(.)
+```
+
+
+
+### * Important step *
+))_I had to do some modifications to the Colony2.dat file that I created with the Windows GUI to then run it with the command. The thing is you have to copy the Colony2.dat file into the MAIN DIRECTORY OF COLONY and then the program finds it automatically ... Don't forget to remove it from there later.
+
+                           DID YOU DO IT ? 
+                           DID YOU DO IT ? 
+                           DID YOU DO IT ? 
+                           DID YOU DO IT ? 
+                           DID YOU DO IT ? 
+
+                           DID YOU DO IT ? 
+
+
+
+
+
+
+                           DID YOU DO IT ? 
+
+
+
+
+# III) Results
+
+What happened: Anthony used his computer to run Colony for me. 
+I'm going to analyse the results here! 
+
+Import stuff from the folder " New stage/Noe/BigCreek project/Analysis/Sibship_analysis/Sibship_analysis_COLONYv2/Results_Run1_AntonyClemento/UBC_colony_run1 "
+
+## A) Understand the results table
+
+1) The best FS families
+
+That's a good start. Maybe see if some other outputs are useful. 
+
+In this file, each family takes one row, with the 1st column showing the family index, 2nd and 3rd columns showing the inclusive and exclusive probabilities of this family (calculated as explained in FAQ 13.4, Colony user manual), followed by the IDs of all the offspring members of this family.
+
+The 2nd column gives the probability that all individuals (listed from column 4 on) of a given fullsib family in the best configuration are fullsibs. Essentially this Inc.Prob. shows to which extent the full sib family is splitable. The lower this probability is, the higher is the likelihood that the family can be split into 2 or more families. 
+
+The 3rd column gives the probability that all individuals (listed from column 4 on) of a given fullsib family in the best configuration are fullsibs, and no other individuals are fullsibs with this fullsib family. Therefore, this Prob(Exc.) is always smaller than or equal to Prob(Inc.) of the same family.
+
+```{r}
+# This may have to be done manually ...
+UBC_run1 <- read_table2("Analysis/Sibship_analysis/Sibship_analysis_COLONYv2/Results_Run1_AntonyClemento/UBC_colony_run1/UBC_run1.BestFSFamily")
+# I had to go in the file and replace all commas by whitespaces.
+
+UBC_run1_famcount <- UBC_run1 %>% 
+select(everything()) %>%               # replace to your needs
+  summarise_all(funs(sum(is.na(.))))
+
+UBC_run1_SibSize <- UBC_run1 %>% 
+  mutate(apply(UBC_run1, MARGIN = 1, function(x) sum(is.na(x)))) %>% 
+  rename(., AntiFamSize = 'apply(UBC_run1, MARGIN = 1, function(x) sum(is.na(x)))') %>% 
+  mutate(., Sibsize = abs(AntiFamSize - (ncol(UBC_run1) - 4)) +1) 
+attach(UBC_run1_SibSize)
+UBC_run1_SibSize_Sorted <- UBC_run1_SibSize[order(Sibsize, decreasing = T),] 
+
+head(UBC_run1_SibSize)
+head(UBC_run1_famcount)
+
+```
+
+ 
+## B) Tidying: Reshape and join metadata 
+
+### 1) Reshape
+
+Many steps to get the table in the good format. 
+
+```{r}
+UBC_run1_SibSize_SibShip1 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member1)) %>% 
+  rename(., Member = Member1)
+UBC_run1_SibSize_SibShip2 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member2)) %>% 
+  rename(., Member = Member2)
+UBC_run1_SibSize_SibShip3 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member3)) %>% 
+  rename(., Member = Member3)
+UBC_run1_SibSize_SibShip4 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member4)) %>% 
+  rename(., Member = Member4)
+UBC_run1_SibSize_SibShip5 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member5)) %>% 
+  rename(., Member = Member5)
+UBC_run1_SibSize_SibShip6 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member6)) %>% 
+  rename(., Member = Member6)
+UBC_run1_SibSize_SibShip7 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member7)) %>% 
+  rename(., Member = Member7)
+UBC_run1_SibSize_SibShip8 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member8)) %>% 
+  rename(., Member = Member8)
+UBC_run1_SibSize_SibShip9 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member9)) %>% 
+  rename(., Member = Member9)
+UBC_run1_SibSize_SibShip10 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member10)) %>% 
+  rename(., Member = Member10)
+UBC_run1_SibSize_SibShip11 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member11)) %>% 
+  rename(., Member = Member11)
+UBC_run1_SibSize_SibShip12 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member12)) %>% 
+  rename(., Member = Member12)
+UBC_run1_SibSize_SibShip13 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member13)) %>% 
+  rename(., Member = Member13)
+UBC_run1_SibSize_SibShip14 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member14)) %>% 
+  rename(., Member = Member14)
+UBC_run1_SibSize_SibShip15 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member15)) %>% 
+  rename(., Member = Member15)
+UBC_run1_SibSize_SibShip16 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member16)) %>% 
+  rename(., Member = Member16)
+UBC_run1_SibSize_SibShip17 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member17)) %>% 
+  rename(., Member = Member17)
+UBC_run1_SibSize_SibShip18 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member18)) %>% 
+  rename(., Member = Member18)
+UBC_run1_SibSize_SibShip19 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member19)) %>% 
+  rename(., Member = Member19)
+UBC_run1_SibSize_SibShip20 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member20)) %>% 
+  rename(., Member = Member20)
+UBC_run1_SibSize_SibShip21 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member21)) %>% 
+  rename(., Member = Member21)
+UBC_run1_SibSize_SibShip22 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member22)) %>% 
+  rename(., Member = Member22)
+UBC_run1_SibSize_SibShip23 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member23)) %>% 
+  rename(., Member = Member23)
+UBC_run1_SibSize_SibShip24 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member24)) %>% 
+  rename(., Member = Member24)
+UBC_run1_SibSize_SibShip25 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member25)) %>% 
+  rename(., Member = Member25)
+UBC_run1_SibSize_SibShip26 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member26)) %>% 
+  rename(., Member = Member26)
+UBC_run1_SibSize_SibShip27 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member27)) %>% 
+  rename(., Member = Member27)
+UBC_run1_SibSize_SibShip28 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member28)) %>% 
+  rename(., Member = Member28)
+UBC_run1_SibSize_SibShip29 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member29)) %>% 
+  rename(., Member = Member29)
+UBC_run1_SibSize_SibShip30 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member30)) %>% 
+  rename(., Member = Member30)
+ 
+UBC_run1_SibSize_SibShip31 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member31)) %>% 
+  rename(., Member = Member31)
+  
+UBC_run1_SibSize_SibShip32 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member32)) %>% 
+  rename(., Member = Member32)
+  
+UBC_run1_SibSize_SibShip33 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member33)) %>% 
+  rename(., Member = Member33)
+  
+UBC_run1_SibSize_SibShip34 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member34)) %>% 
+  rename(., Member = Member34)
+  
+UBC_run1_SibSize_SibShip35 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member35)) %>% 
+  rename(., Member = Member35)
+  
+UBC_run1_SibSize_SibShip36 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member36)) %>% 
+  rename(., Member = Member36)
+  
+UBC_run1_SibSize_SibShip37 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member37)) %>% 
+  rename(., Member = Member37)
+  
+UBC_run1_SibSize_SibShip38 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member38)) %>% 
+  rename(., Member = Member38)
+  
+UBC_run1_SibSize_SibShip39 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member39)) %>% 
+  rename(., Member = Member39)
+  
+UBC_run1_SibSize_SibShip40 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member40)) %>% 
+  rename(., Member = Member40)
+  
+UBC_run1_SibSize_SibShip41 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member41)) %>% 
+  rename(., Member = Member41)
+  
+UBC_run1_SibSize_SibShip42 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member42)) %>% 
+  rename(., Member = Member42)
+  
+UBC_run1_SibSize_SibShip43 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member43)) %>% 
+  rename(., Member = Member43)
+  
+UBC_run1_SibSize_SibShip44 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member44)) %>% 
+  rename(., Member = Member44)
+  
+UBC_run1_SibSize_SibShip45 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member45)) %>% 
+  rename(., Member = Member45)
+  
+UBC_run1_SibSize_SibShip46 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member46)) %>% 
+  rename(., Member = Member46)
+  
+UBC_run1_SibSize_SibShip47 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member47)) %>% 
+  rename(., Member = Member47)
+  
+UBC_run1_SibSize_SibShip48 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member48)) %>% 
+  rename(., Member = Member48)
+  
+UBC_run1_SibSize_SibShip49 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member49)) %>% 
+  rename(., Member = Member49)
+  
+UBC_run1_SibSize_SibShip50 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member50)) %>% 
+  rename(., Member = Member50)
+  
+UBC_run1_SibSize_SibShip51 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member51)) %>% 
+  rename(., Member = Member51)
+  
+UBC_run1_SibSize_SibShip52 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member52)) %>% 
+  rename(., Member = Member52)
+  
+UBC_run1_SibSize_SibShip53 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member53)) %>% 
+  rename(., Member = Member53)
+  
+UBC_run1_SibSize_SibShip54 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member54)) %>% 
+  rename(., Member = Member54)
+  
+UBC_run1_SibSize_SibShip55 <- UBC_run1_SibSize_Sorted %>% 
+  select(., - AntiFamSize) %>% 
+  select(., c(FullSibshipIndex, 'Prob(Inc.)', 'Prob(Exc.)', Sibsize, Member55)) %>% 
+  rename(., Member = Member55)
+
+UBC_run1_SibSize_Reshaped_well <- rbind(UBC_run1_SibSize_SibShip1, UBC_run1_SibSize_SibShip2, UBC_run1_SibSize_SibShip3, UBC_run1_SibSize_SibShip4, UBC_run1_SibSize_SibShip5, UBC_run1_SibSize_SibShip6, UBC_run1_SibSize_SibShip7, UBC_run1_SibSize_SibShip8, UBC_run1_SibSize_SibShip9, UBC_run1_SibSize_SibShip10, UBC_run1_SibSize_SibShip11, UBC_run1_SibSize_SibShip12, UBC_run1_SibSize_SibShip13, UBC_run1_SibSize_SibShip14, UBC_run1_SibSize_SibShip15, UBC_run1_SibSize_SibShip16, UBC_run1_SibSize_SibShip17, UBC_run1_SibSize_SibShip18, UBC_run1_SibSize_SibShip19, UBC_run1_SibSize_SibShip20, UBC_run1_SibSize_SibShip21, UBC_run1_SibSize_SibShip22, UBC_run1_SibSize_SibShip23, UBC_run1_SibSize_SibShip24, UBC_run1_SibSize_SibShip25, UBC_run1_SibSize_SibShip26, UBC_run1_SibSize_SibShip27, UBC_run1_SibSize_SibShip28, UBC_run1_SibSize_SibShip29, UBC_run1_SibSize_SibShip30, UBC_run1_SibSize_SibShip31, UBC_run1_SibSize_SibShip32, UBC_run1_SibSize_SibShip33, UBC_run1_SibSize_SibShip34, UBC_run1_SibSize_SibShip35, UBC_run1_SibSize_SibShip36, UBC_run1_SibSize_SibShip37, UBC_run1_SibSize_SibShip38, UBC_run1_SibSize_SibShip39, UBC_run1_SibSize_SibShip40, UBC_run1_SibSize_SibShip41, UBC_run1_SibSize_SibShip42, UBC_run1_SibSize_SibShip43, UBC_run1_SibSize_SibShip44, UBC_run1_SibSize_SibShip45, UBC_run1_SibSize_SibShip46, UBC_run1_SibSize_SibShip47, UBC_run1_SibSize_SibShip48, UBC_run1_SibSize_SibShip49, UBC_run1_SibSize_SibShip50, UBC_run1_SibSize_SibShip51, UBC_run1_SibSize_SibShip52, UBC_run1_SibSize_SibShip53, UBC_run1_SibSize_SibShip54, UBC_run1_SibSize_SibShip55)
+
+UBC_run1_SibSize_Reshaped_well_NoNA <- UBC_run1_SibSize_Reshaped_well %>% 
+  filter(., !is.na(Member)) %>% 
+  rename(., Sample_ID = "Member")
+
+rm(UBC_run1_SibSize_SibShip1, UBC_run1_SibSize_SibShip2, UBC_run1_SibSize_SibShip3, UBC_run1_SibSize_SibShip4, UBC_run1_SibSize_SibShip5, UBC_run1_SibSize_SibShip6, UBC_run1_SibSize_SibShip7, UBC_run1_SibSize_SibShip8, UBC_run1_SibSize_SibShip9, UBC_run1_SibSize_SibShip10, UBC_run1_SibSize_SibShip11, UBC_run1_SibSize_SibShip12, UBC_run1_SibSize_SibShip13, UBC_run1_SibSize_SibShip14, UBC_run1_SibSize_SibShip15, UBC_run1_SibSize_SibShip16, UBC_run1_SibSize_SibShip17, UBC_run1_SibSize_SibShip18, UBC_run1_SibSize_SibShip19, UBC_run1_SibSize_SibShip20, UBC_run1_SibSize_SibShip21, UBC_run1_SibSize_SibShip22, UBC_run1_SibSize_SibShip23, UBC_run1_SibSize_SibShip24, UBC_run1_SibSize_SibShip25, UBC_run1_SibSize_SibShip26, UBC_run1_SibSize_SibShip27, UBC_run1_SibSize_SibShip28, UBC_run1_SibSize_SibShip29, UBC_run1_SibSize_SibShip30, UBC_run1_SibSize_SibShip31, UBC_run1_SibSize_SibShip32, UBC_run1_SibSize_SibShip33, UBC_run1_SibSize_SibShip34, UBC_run1_SibSize_SibShip35, UBC_run1_SibSize_SibShip36, UBC_run1_SibSize_SibShip37, UBC_run1_SibSize_SibShip38, UBC_run1_SibSize_SibShip39, UBC_run1_SibSize_SibShip40, UBC_run1_SibSize_SibShip41, UBC_run1_SibSize_SibShip42, UBC_run1_SibSize_SibShip43, UBC_run1_SibSize_SibShip44, UBC_run1_SibSize_SibShip45, UBC_run1_SibSize_SibShip46, UBC_run1_SibSize_SibShip47, UBC_run1_SibSize_SibShip48, UBC_run1_SibSize_SibShip49, UBC_run1_SibSize_SibShip50, UBC_run1_SibSize_SibShip51, UBC_run1_SibSize_SibShip52, UBC_run1_SibSize_SibShip53, UBC_run1_SibSize_SibShip54, UBC_run1_SibSize_SibShip55)
+```
+
+### 2) Join metadata
+
+The dataframe is well reshaped, let's join some metadata now ! 
+
+```{r}
+
+Minimeta_V5 <- MetaALLYEARS %>% 
+  select(., c(Sex, Coll_year, Coll_month, Coll_day, LENGTH, WEIGHT, AGE, Sample_ID, indiv.ID))
+
+Minimeta_V6 <- Minimeta_V5 %>% 
+  rename(., Indiv = "indiv.ID") %>%          # _Use that trick cause the colname is Indiv instead of Indiv.ID
+  left_join(., Good_Omy5s, by = "Indiv")     
+   rename(.,  indiv.ID = "Indiv")
+
+
+# Take a miniversion of the "Final_pairs_YOY" to join to our sibship data. 
+MiniYOYclonesmeta <- Final_pairs_YOYs %>%  
+  select(., Mate1, YearYOYclone) %>% 
+  rename(., Sample_ID = "Mate1")
+
+
+UBC_run1_SibSize_META <- UBC_run1_SibSize_Reshaped_well_NoNA %>% 
+  left_join(., Minimeta_V6, by = "Sample_ID") %>% 
+  left_join(., MiniYOYclonesmeta, by = "Sample_ID") %>% 
+  rename(., Sibship_Member= "Sample_ID") %>% 
+  mutate(., YOY = if_else(LENGTH < 95, 'YES', 'no')) %>% 
+  mutate(., HasRemovedClone = if_else(UBC_run1_SibSize_Reshaped_well_NoNA$Sample_ID %in% Final_pairs_V4$Mate1 , 'YES', 'NO'))  %>% 
+  mutate(., HasYOYclone = if_else(Sibship_Member %in% Final_pairs_YOYs$Mate1, "YES", "no" ))
+
+
+
+```
+
+So by the way, FullSibshipIndex is the sibship identifier ! :) 
+
+## C) YOYs & NON-YOYs: A quick analysis 
+
+The idea is simple: Since we have tiny populations, it is likely that many individuals will be really closely related, and thus our ability to detect fullsibs is reduced. 
+Thus, we later filter for YOYs only in order to have some confidence in the results. 
+Although, let's look at the "UBC_run1_SibSize_META" first. 
+
+Most big big sibships may actually be mixes of TRUE fullsibs and FALSE ones (close cousins or weird inbred crosses etc)
+
+### 1) Compare probabilities 
+
+Prob(Inc.) gives the probability that all individuals of a given fullsib family in the best configuration are fullsibs. Essentially this Inc.Prob. shows to which extent the full sib family is splitable. The lower this probability is, the higher is the likelihood that the family can be split into 2 or more families.
+
+Prob(Exc.) gives the probability that all individuals of a given fullsib family in the best configuration are fullsibs, and no other individuals in the dataset are fullsibs with this fullsib family.
+
+Comparing Prob(Inc.) with Prob(Exc.) sheds light on the possible sibship structure. If a sibship has a high Prob(Inc.) but a low Prob(Exc.), then it means the best full sibship is probably true, but incomplete (the sibship might be split).
+
+```{r}
+# Compare the two probabilities here
+cor.test(x = UBC_run1_SibSize_META$`Prob(Inc.)`, y =  UBC_run1_SibSize_META$`Prob(Exc.)`, alternative = "greater", method = "pearson")
+
+ggplot(data = UBC_run1_SibSize_META) +
+  aes(x = `Prob(Inc.)`, y = `Prob(Exc.)`) +
+  geom_point(color = "#08519c") +
+  labs(title = "Relation prob(Inc.) ~ Prob(Exc.) in (YOY and NON-YOY) sibships of Big creek") +
+  theme_minimal()
+head(UBC_run1_SibSize_META)
+
+```
+
+Comments: 
+
+Since we didn't filter anything we have a quite poor (but significant) correlation between Prob(Exc.) and Prob(Inc.).
+Also, we seem to have a lot of "confident" families (Inc. = 1) that are more or less likely to be incomplete 
+(Exc. < 1), meaning that other individuals in the dataset could be included in the sibship... 
+
+I suggest that we filter out the sibships with a Inc. inferior to 0.90 !
+
+### 2) Filter on Prob.Inc.
+
+```{r}
+UBC_run1_SibSize_META_Probfiltered <- UBC_run1_SibSize_META %>% 
+  filter(., ! `Prob(Inc.)` <= 0.9)
+
+nrow(UBC_run1_SibSize_META_Probfiltered)
+```
+
+
+### 3) Enrich the full sibship dataset
+
+Now, we want to know a few things about our results! 
+
+This is a simpler version of what we did with YOYs only just below, don't expect these parralel analyses ot be optimised, I did this one after the YOYs so as always in scripts do things backward is a bit weird. 
+
+```{r}
+Sex_ratios_per_Sibgroup_Best_Allfish <- UBC_run1_SibSize_META_Probfiltered %>% 
+  group_by(., FullSibshipIndex, Sex ) %>%                          #Group them by sibship AND sex
+  summarise(n = n()) %>% 
+  mutate(., Sibsize = sum(n)) %>%   # Get the sum of number of males + number of females = Sibship size
+  rename(., SibsizePerSex = n) %>%         
+  ungroup() %>% 
+  mutate(., Nummales = ifelse(Sex == "M", SibsizePerSex,   0)) %>%      
+  mutate(., Numfemales = ifelse(Sex == "F", SibsizePerSex,   0)) %>%     # Just to get properly the number of males and females
+  mutate(Perc.Male = if_else(as.numeric(Numfemales) == Sibsize, 10000, Nummales / Sibsize *100)) %>%   
+  filter(., !Perc.Male == 0) %>% 
+  mutate(., Perc.Male = if_else(Perc.Male == 10000, 0, Perc.Male))   %>% 
+# A way to make sure that in the case of zero male we don't get a NA but a zero instead.  
+  mutate(., Num_females = ((100 - Perc.Male) * Sibsize)/100) %>% 
+  mutate(., Num_males = Sibsize - Num_females) %>% 
+  select(., -c(Sibsize, Sex, Nummales, Numfemales, SibsizePerSex))
+
+
+UBC_run1_SibSize_META_Allfish <-  UBC_run1_SibSize_META_Probfiltered %>% 
+  filter(., Sibsize > 1) %>% 
+  left_join(., Sex_ratios_per_Sibgroup_Best_Allfish, by = "FullSibshipIndex") %>% 
+  # Count the number of members having a Clone info to potentially use later !
+  group_by(., FullSibshipIndex, HasRemovedClone) %>% 
+  add_count() %>% 
+  mutate(., Num_Clone_in_Sibship = ifelse( test = HasRemovedClone == "YES", n(), 0)) %>% 
+  select(., - c(n)) %>% 
+  ungroup()
+
+# A wee little line to replace the NA's in hapstr by "?" so we don't take the risk of NA introduced latter on.
+UBC_run1_SibSize_META_Allfish$hapstr[is.na(UBC_run1_SibSize_META_Allfish$hapstr)] <- "?"
+
+
+
+```
+
+Write the file 
+```{r}
+write.csv(UBC_run1_SibSize_META_Allfish, file = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Analysis/Sibship_analysis/Sibship_analysis_COLONYv2/Results_Run1_AntonyClemento/UBC_run1_SibSize_META_Allfish.csv")
+```
+
+
+Then we copy what we do below for YOYs: 
+We did a nice summary, and here you have it for all the fish of the sibship dataset.
+
+```{r}
+
+          ############ DO NOT USE THE ONE BELOW FOR INDIVIDUAL INFO #########
+
+
+         # The dataframe below is meant to be a summary of each Allfish (i.e YOYs and NON-YOYs) sibship: Thus, you will find no individual info about each fish of the sibship, but rather the average length, the year of the sibship, etc etc
+
+# I) Here we compute the average LENGTH of the fish in the sibsize in order to add it to our beautiful summary
+
+Sibshipe_LENGTH_average_Allfish <- UBC_run1_SibSize_META_Allfish %>% 
+  group_by(FullSibshipIndex, Coll_year) %>%
+  mutate(., Numfish_per_year =  n()) %>% 
+  mutate(., Mean_LENGTH_Sibship_2010 = if_else(Coll_year == 2010, mean(LENGTH) , 0)) %>%    
+  mutate(., Numb.of.Fish_Sibship_2010 = if_else(Coll_year == 2010, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2011 = if_else(Coll_year == 2011, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2011 = if_else(Coll_year == 2011, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2012 = if_else(Coll_year == 2012, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2012 = if_else(Coll_year == 2012, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2013 = if_else(Coll_year == 2013, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2013 = if_else(Coll_year == 2013, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2014 = if_else(Coll_year == 2014, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2014 = if_else(Coll_year == 2014, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2015 = if_else(Coll_year == 2015, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2015 = if_else(Coll_year == 2015, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2016 = if_else(Coll_year == 2016, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2016 = if_else(Coll_year == 2016, Numfish_per_year , as.integer(0))) %>% 
+  mutate(., Mean_LENGTH_Sibship_2017 = if_else(Coll_year == 2017, mean(LENGTH) , 0)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2017 = if_else(Coll_year == 2017, Numfish_per_year , as.integer(0))) %>% 
+  ungroup() %>% 
+  group_by(FullSibshipIndex) %>% 
+  mutate(., Mean_LENGTH_Sibship_2010 = max(Mean_LENGTH_Sibship_2010)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2010 = max(Numb.of.Fish_Sibship_2010)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2011 = max(Mean_LENGTH_Sibship_2011)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2011 = max(Numb.of.Fish_Sibship_2011)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2012 = max(Mean_LENGTH_Sibship_2012)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2012 = max(Numb.of.Fish_Sibship_2012)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2013 = max(Mean_LENGTH_Sibship_2013)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2013 = max(Numb.of.Fish_Sibship_2013)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2014 = max(Mean_LENGTH_Sibship_2014)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2014 = max(Numb.of.Fish_Sibship_2014)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2015 = max(Mean_LENGTH_Sibship_2015)) %>% 
+  mutate(., Numb.of.Fish_Sibship_2015 = max(Numb.of.Fish_Sibship_2015)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2016 = max(Mean_LENGTH_Sibship_2016)) %>%
+  mutate(., Numb.of.Fish_Sibship_2016 = max(Numb.of.Fish_Sibship_2016)) %>% 
+  mutate(., Mean_LENGTH_Sibship_2017 = max(Mean_LENGTH_Sibship_2017)) %>%
+  mutate(., Numb.of.Fish_Sibship_2017 = max(Numb.of.Fish_Sibship_2017)) %>% 
+  ungroup() %>% 
+ select(-c(`Prob(Inc.)`, `Prob(Exc.)`, Num_females, Num_males, Numfish_per_year, Coll_month, Coll_day, LENGTH, WEIGHT, Sex, AGE, Population, YearYOYclone, YOY, hapstr, HasYOYclone, HasRemovedClone, Sibship_Member, Indiv)) %>% 
+  distinct(., FullSibshipIndex, .keep_all = T)
+
+
+
+
+# Try to plot to see if size evolves well (i.e mean size is not regressing over time!)
+# Plot also the number of fish throughout the years. 
+# I'm not the best at plotting so it's not very easy. 
+
+#☻ Here do a table that is easier to read!
+Long_format_Sibshipe_LENGTH_average_Allfish_Part1 <- Sibshipe_LENGTH_average_Allfish %>% 
+  gather(year_of_observation, numfish, Numb.of.Fish_Sibship_2010, Numb.of.Fish_Sibship_2011, Numb.of.Fish_Sibship_2012, Numb.of.Fish_Sibship_2013, Numb.of.Fish_Sibship_2014, Numb.of.Fish_Sibship_2015, Numb.of.Fish_Sibship_2016, Numb.of.Fish_Sibship_2017) %>% 
+  select(., c(FullSibshipIndex, Sibsize, Coll_year, Perc.Male, Num_Clone_in_Sibship, numfish, year_of_observation))
+ Long_format_Sibshipe_LENGTH_average_Allfish_Part1$year_of_observation  <- as.numeric(str_replace_all(string = Long_format_Sibshipe_LENGTH_average_Allfish_Part1$year_of_observation, pattern = "Numb.of.Fish_Sibship_", replacement = ""))
+Long_format_Sibshipe_LENGTH_average_Allfish_Part2 <- Sibshipe_LENGTH_average_Allfish %>% 
+  gather(year_of_observation, meanSizefish, Mean_LENGTH_Sibship_2010, Mean_LENGTH_Sibship_2011, Mean_LENGTH_Sibship_2012, Mean_LENGTH_Sibship_2013, Mean_LENGTH_Sibship_2014, Mean_LENGTH_Sibship_2015, Mean_LENGTH_Sibship_2016, Mean_LENGTH_Sibship_2017) %>% select(., FullSibshipIndex,  year_of_observation, meanSizefish)
+Long_format_Sibshipe_LENGTH_average_Allfish_Part2$year_of_observation  <- as.numeric(str_replace_all(string = Long_format_Sibshipe_LENGTH_average_Allfish_Part2$year_of_observation, pattern = "Mean_LENGTH_Sibship_", replacement = ""))
+ Long_format_Sibshipe_LENGTH_average_Allfish_Part1$year_of_observation  <- as.character( Long_format_Sibshipe_LENGTH_average_Allfish_Part1$year_of_observation)
+  Long_format_Sibshipe_LENGTH_average_Allfish_Part2$year_of_observation  <- as.character( Long_format_Sibshipe_LENGTH_average_Allfish_Part2$year_of_observation)
+Long_format_Sibshipe_LENGTH_average_Allfish <- Long_format_Sibshipe_LENGTH_average_Allfish_Part1 %>% 
+  left_join(., Long_format_Sibshipe_LENGTH_average_Allfish_Part2, by = c( "year_of_observation", "FullSibshipIndex"))
+
+ggplot(data = Long_format_Sibshipe_LENGTH_average_Allfish, aes(x=year_of_observation  , y=numfish, colour=FullSibshipIndex, group=FullSibshipIndex)) + geom_line() + geom_point() + ggtitle("Multiple lines with unique color")
+
+Long_format_Sibshipe_LENGTH_average_Allfish <- Long_format_Sibshipe_LENGTH_average_Allfish %>% 
+  filter(., meanSizefish > 0) 
+#ggplot(data = Long_format_Sibshipe_LENGTH_average_Allfish, aes(x=year_of_observation, y=meanSizefish, colour=FullSibshipIndex, group=FullSibshipIndex) + geom_line() + geom_point() + ggtitle("Multiple lines with unique color"))
+
+# Let's write this nice table! 
+write.csv(Long_format_Sibshipe_LENGTH_average_Allfish, file = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Analysis/Sibship_analysis/Sibship_analysis_COLONYv2/Results_Run1_AntonyClemento/Long_format_Sibshipe_LENGTH_average_Allfish.csv" )
+
+# II) Create summary of Omy5 haplotypes 
+
+Sibship_Omy5s_Allfish <- UBC_run1_SibSize_META_Allfish %>% 
+  group_by(FullSibshipIndex) %>%                         # So we have results per sibship
+  distinct(hapstr) %>%                                   # So we don't end up with a super long string
+  
+  mutate(., Short_hapstr = if_else(hapstr == "AAAA", "A", if_else(hapstr == "HHHH", "H", if_else(hapstr == "RRRR", "R", "?")))) %>%   # So we concatenate "A", "H" and "R" instead of "AAAA", "HHHH" and "RRRR"
+  
+  mutate(Hapstr_in_sibship = paste0(Short_hapstr, collapse = ",")) %>% # Concatenate in one string 
+  distinct(FullSibshipIndex, .keep_all = T) %>% 
+  select(., c(FullSibshipIndex, Hapstr_in_sibship))
+  
+
+# III) Assemble these parts and correct Sibsihp_Year
+
+# In the two cases where a YOY sibship is of mixed years (2013 AND 2014), we want to have the minimum year of the sibship, just to plot the data accordingly. 
+# The problem is that may make us ignore some problems, but we will sort them later.  
+Mini_Summary_per_Sibgroup_Allfish_uncorrected <- UBC_run1_SibSize_META_Allfish %>% 
+  group_by(FullSibshipIndex) %>% 
+  mutate(., CollSibcorr_B = min(Coll_year)) %>% 
+  ungroup() %>% 
+  distinct(FullSibshipIndex, CollSibcorr_B, .keep_all = T) %>% 
+  # Now it's better to remove all variables linked to individuals (since we used distinct after grouping by sibship) as well as non useful ones, we want a nice and clear summary. 
+  select(., -c(Sibship_Member, Coll_year, Coll_month, Coll_day, Sex, LENGTH, WEIGHT, AGE, Sibsize, Indiv, hapstr, Perc.Male, Coll_year, Num_Clone_in_Sibship)) %>% 
+  left_join(., Sibshipe_LENGTH_average_Allfish, by = "FullSibshipIndex") %>% 
+  left_join(., Sibship_Omy5s_Allfish, by = "FullSibshipIndex") %>% 
+  select(., - c(Coll_year, HasRemovedClone)) %>% 
+  mutate(., Size_class = if_else(Sibsize <= 5, "2-5", if_else(Sibsize > 5 & Sibsize <= 10, "6-10", if_else(Sibsize > 10 & Sibsize <= 15, "11-15", if_else(Sibsize > 15 & Sibsize <= 20, "16-20", if_else(Sibsize > 20 & Sibsize <= 25, "21-25", if_else(Sibsize > 25 & Sibsize <= 30, "26-30", "31+"))))))) %>% 
+    mutate(., Collyear_Sibship_corrected = if_else(CollSibcorr_B == "2010" & c(Mean_LENGTH_Sibship_2010 > 100 | Mean_LENGTH_Sibship_2010 == 0), "Unknown" , if_else(CollSibcorr_B == "2011" & c(Mean_LENGTH_Sibship_2011 > 100 | Mean_LENGTH_Sibship_2011 == 0), "Unknown" , if_else(CollSibcorr_B == "2012" & c(Mean_LENGTH_Sibship_2012 > 100 | Mean_LENGTH_Sibship_2012 == 0), "Unknown" , if_else(CollSibcorr_B == "2013" & c(Mean_LENGTH_Sibship_2013 > 100 | Mean_LENGTH_Sibship_2013 == 0), "Unknown" , if_else(CollSibcorr_B == "2014" & c(Mean_LENGTH_Sibship_2014 > 100 | Mean_LENGTH_Sibship_2014 == 0), "Unknown" , if_else(CollSibcorr_B == "20105" & c(Mean_LENGTH_Sibship_2015 > 100 | Mean_LENGTH_Sibship_2015 == 0), "Unknown" , if_else(CollSibcorr_B == "2016" & c(Mean_LENGTH_Sibship_2016 > 100 | Mean_LENGTH_Sibship_2016 == 0), "Unknown" , if_else(CollSibcorr_B == "2017" & c(Mean_LENGTH_Sibship_2017 > 100 | Mean_LENGTH_Sibship_2017 == 0), "Unknown" , CollSibcorr_B ) ) ) ) )  ) ) ))
+ 
+          ########### VALID FOR SIBSHIP INFO ONLY ###############
+
+
+write.csv(Mini_Summary_per_Sibgroup_Allfish_uncorrected, file = "D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Analysis/Sibship_analysis/Sibship_analysis_COLONYv2/Results_Run1_AntonyClemento/Mini_Summary_per_Sibgroup_Allfish_uncorrected.csv" )
+ 
+```
+    mutate(., Collyear_Sibship_corrected = if_else(CollSibcorr_B == "2010" & Mean_LENGTH_Sibship_2010 > 65 | Mean_LENGTH_Sibship_2010 == 0, "Unknown" , if_else(CollSibcorr_B == "2011" & Mean_LENGTH_Sibship_2011 > 65 | Mean_LENGTH_Sibship_2011 == 0, "Unknown" , if_else(CollSibcorr_B == "2012" & Mean_LENGTH_Sibship_2012 > 65 | Mean_LENGTH_Sibship_2012 == 0, "Unknown" , if_else(CollSibcorr_B == "2013" & Mean_LENGTH_Sibship_2013 > 65 | Mean_LENGTH_Sibship_2013 == 0, "Unknown" , if_else(CollSibcorr_B == "2014" & Mean_LENGTH_Sibship_2014 > 65 | Mean_LENGTH_Sibship_2014 == 0, "Unknown" , if_else(CollSibcorr_B == "20105" & Mean_LENGTH_Sibship_2015 > 65 | Mean_LENGTH_Sibship_2015 == 0, "Unknown" , if_else(CollSibcorr_B == "2016" & Mean_LENGTH_Sibship_2016 > 65 | Mean_LENGTH_Sibship_2016 == 0, "Unknown" , if_else(CollSibcorr_B == "2017" & Mean_LENGTH_Sibship_2017 > 65 | Mean_LENGTH_Sibship_2017 == 0, "Unknown" , CollSibcorr_B ) ) ) ) )  ) ) ))
+
+
+### 4)  Exploration plots
+
+Sibsize_vs_sex_ratio_All_Fish_Colored_by_Year 
+
+```{r}
+library(ggplot2)
+
+ggplot(Mini_Summary_per_Sibgroup_Allfish_uncorrected) +
+ aes(x = Sibsize, y = Perc.Male, colour = Collyear_Sibship_corrected) +
+ geom_point(size = 1.78) +
+ scale_color_hue() +
+ labs(title = "Relation of sibship size and sex-ratio in YOY and non-Yoys in Big Creek, by Year", subtitle = "The variance in sex ratio decreases with sibship size: Law of large numbers or incomplete sampling?") +
+ theme_minimal()
+```
+
+```{r}
+esquisser(Long_format_Sibshipe_LENGTH_average_Allfish)
+```
+
+### 5) Are lengths coherent? 
+
+See the thing is we would expect the mean length of the sibship to increase with years (the must would be to test if it follows a growth model). We can use that to detect incoherent sibships! 
+
+```{r}
+Mini_Summary_per_Sibgroup_Allfish <- Mini_Summary_per_Sibgroup_Allfish_uncorrected %>% 
+  ungroup() %>% 
+  mutate(., Lengths_incompatibilities = if_else( Numb.of.Fish_Sibship_2010 != 0 & Numb.of.Fish_Sibship_2011 != 0   &  Mean_LENGTH_Sibship_2010 > Mean_LENGTH_Sibship_2011, "Problem_in_2010", if_else( Numb.of.Fish_Sibship_2011 != 0 & Numb.of.Fish_Sibship_2012 != 0 &  Mean_LENGTH_Sibship_2011 > Mean_LENGTH_Sibship_2012, "Problem_in_2011",   if_else( Numb.of.Fish_Sibship_2012 != 0 & Numb.of.Fish_Sibship_2013 != 0   &  Mean_LENGTH_Sibship_2012 > Mean_LENGTH_Sibship_2013, "Problem_in_2012", if_else( Numb.of.Fish_Sibship_2013 != 0 & Numb.of.Fish_Sibship_2014 != 0   &  Mean_LENGTH_Sibship_2013 > Mean_LENGTH_Sibship_2014, "Problem_in_2013",  if_else( Numb.of.Fish_Sibship_2014 != 0 & Numb.of.Fish_Sibship_2015 != 0   &  Mean_LENGTH_Sibship_2014 > Mean_LENGTH_Sibship_2015, "Problem_in_2014",  if_else( Numb.of.Fish_Sibship_2015 != 0 & Numb.of.Fish_Sibship_2016 != 0   &  Mean_LENGTH_Sibship_2015 > Mean_LENGTH_Sibship_2016, "Problem_in_2015", if_else( Numb.of.Fish_Sibship_2016 != 0 & Numb.of.Fish_Sibship_2017 != 0   &  Mean_LENGTH_Sibship_2016 > Mean_LENGTH_Sibship_2017, "Problem_in_2016", "No_problem"  )  ) ) )  ) )  ))
+
+Mini_Summary_per_Sibgroup_Allfish %>% count(., Lengths_incompatibilities)
+
+```
+
+Most are in 2013 ... again this cursed year !
+However, I don't think they cause any real issue ... 
+
+### 6) What % of sibships contain YoYs ? 
+
+
+```{r}
+ UBC_run1_SibSize_META_Allfish %>% ungroup() %>% group_by(., FullSibshipIndex) %>% slice(., which.min(LENGTH)) %>% mutate(., YOY_insibship = LENGTH <= 95) %>% ungroup() %>%  count(., YOY_insibship)
+
+
+```
+
+
+## D) YOY Fullsibs should be all from same year ! 
+
+    I FILTER FOR YOYs at this point
+    I FILTER FOR YOYs at this point
+    I FILTER FOR YOYs at this point
+
+--> YOY_sibsize_AllYears : is, after filtering for YOYs, the size of sibgroup
+
+--> YOY_sibsize_byYear : is, after filtering for YOYs and grouping by year, the size of sibgroup. Thus, if a sibgroup is splitted among different years because of duplicate information conflict we will see it with that. 
+
+```{r}
+
+UBC_run1_SibSize_META_Result2_YOYs <-  UBC_run1_SibSize_META_filtered %>% 
+  mutate(., YOY = ifelse(test = LENGTH <= 95, yes = "YES", no = "no")) %>%  # Replace YoY threshold
+  filter(., YOY == 'YES' | HasYOYclone  == 'YES' ) %>%  
+  group_by(., FullSibshipIndex, Coll_year) %>% 
+  add_count() %>% 
+  rename(., YOY_sibsize_byYear = 'n') %>%  
+  filter(., YOY_sibsize_byYear > 1) %>% 
+  group_by(., FullSibshipIndex) %>% 
+  add_count() %>% 
+  rename(., YOY_sibsize_AllYears = 'n') %>% 
+  mutate(., YOYsibs_AllsameYear = if_else(YOY_sibsize_byYear == YOY_sibsize_AllYears, 'YES', 'NO'))%>% 
+  mutate(., WeirdCohort2013_2014 = if_else( Sibship_Member %in% Weird_fish2013_2014$First_ID | Sibship_Member %in% Weird_fish2013_2014$Second_ID, "YES" , "no" ))
+ 
+```
+
+Yes, except in two groups, but it's only because they have duplicated samples that have been sampled as YOYs before :D 
+
+This doesn't really work as well with the 95mm YOY threshold, so let's explore how many sibships are not from the same year using the new threshold of 95mm. 
+
+```{r}
+Dirty_sibships <- UBC_run1_SibSize_META_Result2_YOYs %>% 
+  filter(., YOYsibs_AllsameYear == "NO") %>% 
+  select(., LENGTH, Coll_year)
+```
+
+
+Count the number of sibships:
+```{r}
+HMSibs <- UBC_run1_SibSize_META_Result2_YOYs %>% 
+  distinct(FullSibshipIndex, .keep_all = T) %>% 
+  select(., -c(Sibship_Member, Sex, Coll_day, Coll_month, LENGTH, WEIGHT, AGE, hapstr, YOY))
+```
+
+```{r}
+HMSibs %>% 
+  filter(., YOYsibs_AllsameYear == "NO") %>% 
+  count(., FullSibshipIndex)
+```
+
+
+## E) YOY Sex - ratios among sibgroups & cohorts
+
+  So here we compute: 
+  
+    A) The number of males and females in each sibship
+    B) The percentage of males in each sibship
+
+```{r}
+
+Sex_ratios_per_Sibgroup_Best_YOY <- UBC_run1_SibSize_META_Result2_YOYs %>% 
+  group_by(., FullSibshipIndex, Sex ) %>%                          #Group them by sibship AND sex
+  summarise(n = n()) %>% 
+  mutate(., YOY_sibsize_AllYears = sum(n)) %>%   # Get the sum of number of males + number of females = Sibship size
+  rename(., SibsizePerSex = n) %>%         
+  ungroup() %>% 
+  mutate(., Nummales = ifelse(Sex == "M", SibsizePerSex,   0)) %>%      
+  mutate(., Numfemales = ifelse(Sex == "F", SibsizePerSex,   0)) %>%     # Just to get properly the number of males and females
+  mutate(Perc.Male = if_else( as.numeric(Numfemales) == YOY_sibsize_AllYears, 10000, Nummales / YOY_sibsize_AllYears *100)) %>%   
+  filter(., !Perc.Male == 0) %>% 
+  mutate(., Perc.Male = if_else(Perc.Male == 10000, 0, Perc.Male))   %>% 
+# A way to make sure that in the case of zero male we don't get a NA but a zero instead.  
+  mutate(., Num_females = ((100 - Perc.Male) * YOY_sibsize_AllYears)/100) %>% 
+  mutate(., Num_males = YOY_sibsize_AllYears - Num_females) %>% 
+  select(., -c(YOY_sibsize_AllYears, Sex, Nummales, Numfemales, SibsizePerSex)) 
+
+  
+UBC_run1_SibSize_META_Result_YOY_V3 <- UBC_run1_SibSize_META_Result2_YOYs %>% 
+  left_join(., Sex_ratios_per_Sibgroup_Best_YOY, by = "FullSibshipIndex")
+
+ 
+# The difference between "Sibsize" and "YOY_sibsize_AllYears" is that the second is in YOYs only while the first is for all individuals. 
+
+```
+
+
+### ? Replace Omy5 NAs by "?" : Fill them later with true values if possible
+```{r}
+# A wee little line to replace the NA's in hapstr by "?" so we don't take the risk of NA introduced latter on.
+UBC_run1_SibSize_META_Result_YOY_V3$hapstr[is.na(UBC_run1_SibSize_META_Result_YOY_V3$hapstr)] <- "?"
+```
+
+
+### --> Potential issue below 
+With the couple of YOY sibships being from 2013 AND 2014 ... I'm not too concerned: Either we have parents mating again the same year (which is awesome!) or we have a problem in the sampling, in the labelling, or in my code.
+To inspect with Devon (21/01/2020)
+
+
+We want to plot the Percentage of male per sibgroup / year, but we need to make sure to have a reliable plot so we will summarise our dataset here below:
+
+### 1) Mini summary of YOY sibships
+
+```{r}
+
+          ############ DO NOT USE THE ONE BELOW FOR INDIVIDUAL INFO #########
+
+
+
+         # The dataframe below is meant to be a summary of each YOY sibship: Thus, you will find no individual info about each fish of the sibship, but rather the average length, the year of the sibship, etc etc
+
+
+# I) Here we compute the average LENGTH of the fish in the sibsize in order to add it to our beautiful summary
+
+Sibshipe_LENGTH_average_YOYs <- UBC_run1_SibSize_META_Result_YOY_V3 %>% 
+  group_by(FullSibshipIndex) %>% 
+  mutate(., Mean_LENGTH_Sibship = mean(as.numeric(LENGTH))) %>% 
+  ungroup() %>% 
+  select(c(FullSibshipIndex, Mean_LENGTH_Sibship)) %>% 
+  distinct(FullSibshipIndex, Mean_LENGTH_Sibship)
+
+# II) Create summary of Omy5 haplotypes 
+
+Sibship_Omy5s_YOYs <- UBC_run1_SibSize_META_Result_YOY_V3 %>% 
+  group_by(FullSibshipIndex) %>%                         # So we have results per sibship
+  distinct(hapstr) %>%                                   # So we don't end up with a super long string
+  
+  mutate(., Short_hapstr = if_else(hapstr == "AAAA", "A", if_else(hapstr == "HHHH", "H", if_else(hapstr == "RRRR", "R", "?")))) %>%   # So we concatenate "A", "H" and "R" instead of "AAAA", "HHHH" and "RRRR"
+  
+  mutate(Hapstr_in_sibship = paste0(Short_hapstr, collapse = ",")) %>% # Concatenate in one string 
+  distinct(FullSibshipIndex, .keep_all = T) %>% 
+  select(., c(FullSibshipIndex, Hapstr_in_sibship))
+  
+
+
+
+# III) Assemble these parts and correct Sibsihp_Year
+
+# In the two cases where a YOY sibship is of mixed years (2013 AND 2014), we want to have the minimum year of the sibship, just to plot the data accordingly. 
+# The problem is that may make us ignore some problems, but we will sort them later.  
+Mini_Summary_per_Sibgroup_YOYs <- UBC_run1_SibSize_META_Result_YOY_V3 %>% 
+  group_by(FullSibshipIndex) %>% 
+  mutate(., Collyear_Sibship_corrected = min(Coll_year)) %>% 
+  ungroup() %>% 
+  distinct(FullSibshipIndex, Collyear_Sibship_corrected, .keep_all = T) %>% 
+  # Now it's better to remove all variables linked to individuals (since we used distinct after grouping by sibship) as well as non useful ones, we want a nice and clear summary. 
+  select(., -c(Sibship_Member, hapstr , Coll_year, Coll_month, Coll_day, Sex, LENGTH, WEIGHT, AGE, YOY_sibsize_byYear, Indiv)) %>% 
+  left_join(., Sibshipe_LENGTH_average_YOYs, by = "FullSibshipIndex") %>% 
+  left_join(., Sibship_Omy5s_YOYs, by = "FullSibshipIndex")
+
+          ########### VALID FOR SIBSHIP INFO ONLY ###############
+```
+
+Cool we have a nice summary for each sibship. 
+Let's explore that ! 
+
+
+I want to know ... 
+
+  A - The distribution of size of sibships by year
+  B - The number of sibships by year 
+      (Some years may have more sibships but of smaller sizes: 
+      That could mean that our dataset is not complete enough and that we have some oversplitting of the sibships)
+  C - Correlation between sibship size and prob(Exc.) ?
+
+
+
+
+### 2) The distribution of size of sibships by year
+
+```{r}
+# Let's observe that distribution
+
+ggplot(data = Mini_Summary_per_Sibgroup_YOYs) +
+  aes(x = Collyear_Sibship_corrected, y = YOY_sibsize_AllYears) +
+  geom_boxplot(fill = "#0c4c8a") +
+  labs(title = "Temporal variation in the size of full-sibships of YOYs from Big Creek",
+    x = "Collection year of the YOY sibship",
+    y = "Size of the sibship") +
+  theme_minimal()
+
+# Is that distribution related to the distribution of YOYs in the dataset? 
+
+Temporary_YOYs_in_Minimeta_V6 <- Minimeta_V6 %>% 
+  filter(., LENGTH <= 95)
+
+ggplot(data = Temporary_YOYs_in_Minimeta_V6) +
+  aes(x = Coll_year) +
+  geom_bar(fill = "#0c4c8a") +
+  labs(title = "Ditribution of YOYs by years in the full dataset ",
+    x = "Collection year",
+    y = "Count",
+    subtitle = "(The full dataset is 1809 fish including 250 YOYs)") +
+  theme_minimal()
+
+# Clearly not !! Actually it's because there is only five sibship in 2013, including two big ones (7 and 10) ! 
+# Although, maybe the high number of YOY caught in 2012 allowed to find a few big families!
+
+```
+
+  Commented on google drive docs 
+
+
+          
+### 3) The number of sibships by year
+
+```{r}
+# ♥ So, how is the distribution in number of sibship per year ? 
+
+Number_of_sibship_per_year_YOYs <- Mini_Summary_per_Sibgroup_YOYs %>% 
+  group_by(., Collyear_Sibship_corrected) %>% 
+  add_count() %>% 
+  rename(., Number_of_sibship_this_year = "n") 
+
+ggplot(data = Number_of_sibship_per_year_YOYs) +
+  aes(x = Collyear_Sibship_corrected, y = Number_of_sibship_this_year) +
+  geom_boxplot(fill = "#0c4c8a") +
+  labs(title = "Temporal variation of number of YOY sibships detected by FRANz in the Big Creek dataset",
+    x = "Collection year of the sibships",
+    y = "Number of sibship") +
+  theme_minimal()
+
+```
+Comments on B) : 
+ We sampled a lot of YOYs in 2012 and it resulted in many more sibship found !
+ Overall, the number of sibship seems to match the number of YOY caught every year. 
+ None are found in 2011 and 2015 because too few YOYs were captured. 
+ 
+
+## REPORT IT AND COMMENT ON GOOGLE DOC
+  
+
+```{r}
+library(ggplot2)
+
+ggplot(data = Mini_Summary_per_Sibgroup_YOYs) +
+  aes(x = Collyear_Sibship_corrected, y = Perc.Male) +
+  geom_boxplot(fill = "#0c4c8a") +
+  labs(title = "Temporal variation of sex ratio in YOY sibships of Big Creek",
+    x = "Collection year") +
+  theme_minimal()
+```
+
+### 4) Correlation between YOY sibsize and Prob(Exc.)
+
+Prob(Exc.) gives the probability that all individuals of a given fullsib family in the best configuration are fullsibs, and no other individuals in the dataset are fullsibs with this fullsib family.
+
+Comparing Prob(Inc.) with Prob(Exc.) sheds light on the possible sibship structure. If a sibship has a high Prob(Inc.) but a low Prob(Exc.), then it means the best full sibship is probably true, but incomplete (the sibship might be split).
+
+So maybe the smaller sibships show a lower Prob(Exc.), showing that they may be incomplete or not in the best configuration? 
+If that was the case, we may be careful in interpreting the distribution of full sibling sizes. 
+
+```{r}
+shapiro.test(Mini_Summary_per_Sibgroup_YOYs$YOY_sibsize_AllYears)
+# Low p-value = significant = NOT following normal distribution 
+
+shapiro.test(Mini_Summary_per_Sibgroup_YOYs$`Prob(Exc.)`)
+# Low p-value = significant = NOT following normal distribution 
+
+# Both Prob(Exc.) and YoY_sibsize are not following a normal distribution so we will use a Kendall test. 
+
+cor.test(x = Mini_Summary_per_Sibgroup_YOYs$YOY_sibsize_AllYears, y= Mini_Summary_per_Sibgroup_YOYs$`Prob(Exc.)`, method = "kendall")
+
+```
+The correlatiojn is significant since we changed the threshold of YoY to 95mm.
+
+And what about Prob(Inc.) ? 
+
+```{r}
+shapiro.test(Mini_Summary_per_Sibgroup_YOYs$YOY_sibsize_AllYears)
+# Low p-value = significant = NOT following normal distribution 
+
+shapiro.test(Mini_Summary_per_Sibgroup_YOYs$`Prob(Inc.)`)
+# Low p-value = significant = NOT following normal distribution 
+
+# Both Prob(Exc.) and YoY_sibsize are not following a normal distribution so we will use a Kendall test. 
+
+cor.test(x = Mini_Summary_per_Sibgroup_YOYs$YOY_sibsize_AllYears, y= Mini_Summary_per_Sibgroup_YOYs$`Prob(Inc.)`, method = "kendall")
+
+```
+Ok so no significant correlation ! 
+
+
+
+# .
+#                               THE END
+# .
+# .
+# .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ______
+# KINALYZER
+# ------------
+
+
+
+                                      ####### KINALYZER #######
+                                      ####### KINALYZER #######
+                                      ####### KINALYZER #######
+                                      ####### KINALYZER #######
+                                      ####### KINALYZER #######
+                                      ####### KINALYZER #######
+
+
+2) KINALYZER 
+
+# Input dataset
+
+We can use the file used for Cervus as an input (gtseq7-12_ubc_hap2col_current_vcf.vcf.txt), but we need to remove the duplicated individuals before and replace NAs by "-1" ! 
+
+```{r}
+gtseq7_12_ubc_hap2col_current_vcf_vcf <- read_delim("D:/Nonopov_travail/Santa_Cruz_internship/New stage/Noe/BigCreek project/Data/gtseq7-12_ubc_hap2col_current_vcf.vcf.txt", "\t", escape_double = FALSE,  trim_ws = TRUE)
+
+```
+
+Remove duplicated individuals before and replace NAs by "-1"
+```{r}
+For_KINALYZER_V1 <- gtseq7_12_ubc_hap2col_current_vcf_vcf %>% 
+  mutate(., Sample_ID = str_replace_all(indiv.ID, "steelhead", "SH_")) %>%
+  select(., Sample_ID, everything()) %>% 
+    select(., -c(indiv.ID, group)) %>% 
+  filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove) %>% 
+  mutate_all(~replace(., is.na(.), -1))
+
+```
+
+Check that we removed the right number of individuals ! 
+```{r}
+(nrow(gtseq7_12_ubc_hap2col_current_vcf_vcf)- nrow(For_KINALYZER_V1) ) == nrow(Duplicates_to_remove_CERVUS)
+```
+Write it
+```{r}
+write_csv(For_KINALYZER_V1, path = "D:/Nonopov_travail/Santa_Cruz_internship/New\ stage/Noe/BigCreek project/Analysis/Siship_analysis_KINALYZER/For_KINALYZER_V1_NoDupl_NAminus1.csv", col_names = T )
+```
+
+ WARNING: Now you need to put For_KINALYZER_V1_NoDupl_NAminus1.csv in CREATE and transform it in CERVUS format ! 
+
+Then you can use the resulting dataset (  ) in the following adress to run KINALYZER: http://kinalyzer.cs.uic.edu/ 
+
+
+
+###  ### KYNALYZER DIDN'T WORK BECAUSE THE PLATFORM IS BUGGY AS **** ###  ###
+
+
+
+
+
+
+
+

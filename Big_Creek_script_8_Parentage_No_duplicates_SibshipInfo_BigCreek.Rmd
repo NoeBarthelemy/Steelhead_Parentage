@@ -1,0 +1,853 @@
+---
+title: "Big_Creek_script_8_Parentage_No_duplicates_SibshipInfo_BigCreek.Rmd"
+author: 'Noé Barthelemy'
+date: "23 mars 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Library 
+
+```{r}
+library(tidyverse)
+library(reticulate)
+```
+
+
+
+# I) Introduction 
+
+Hello ! 
+
+The goal here is to : 
+
+Use sibship and duplicates information to run Franz again. 
+The sibship info has been deduced from Colony results in script 7. 
+The duplicates information has been deduced from an identity analysis in script 6. 
+
+# II) Prepare a full-sib input file 
+
+## A) Franz can detect inconsitencies in fullsibs
+
+FRANz tries to detect inconsistencies in the fullsib assignments: if A,B and B,C are fullsibs, then A and C
+must be fullsibs, too. Another explanation would be that either A,B or B,C are false positives. FRANz uses
+a simple heuristic here: if it is unlikely that A and C are fullsibs and either A,B or B,C are close to the p-
+Value cutoff, then it marks A,B (or B,C, respectively) as false positive. Otherwise FRANz marks A,C as
+fullsib (these are the "indirect" fullsibs in siblings.txt).
+
+## B) Who are the certified siblings ?
+
+# CHECK HERE NOE : halfsibin ?
+
+Let's use the multigenerational full siblings,even if in some sibling groups we may have half sibs. 
+
+You can use -halfsibin as an alternative, if you obtain dodgy results (I tested and it is bad, it decreases a lot the confidence we have in assignments, without generating new ones).
+
+The sibs are here: 
+
+"UBC_run1_SibSize_META_Allfish"  
+> As created in script 7 section E)    (subject to change)
+
+## C) What format is Fran requiring ? 
+
+Known fullsib relationships are defined with --fullsibin.
+
+Example:
+1
+3
+Bart
+Lisa
+Maggie
+
+The first line is the number of fullsib or fullsib/halfsib groups, the 3 is the number of fullsibs in the first
+group and the following 3 lines contain the ids of the individuals as in the pedigree infile.
+
+## D) Filter Prob(Inc.) > 0.90 in fullsib file 
+
+Basically the lower Prob(Inc.) the higher the probability that siblings can be split in two different families. 
+Given that Franz is going to take the fullsibs input file as the exact truth, we should be cautious!
+
+Thus, we will filter sibgroups with a Prob(Inc.) > 0.9 
+(No need to filter for 0.99 I think (15 APril 2020))
+
+```{r}
+Filtered_Fullsibs <- UBC_run1_SibSize_META_Allfish %>% 
+  filter(., `Prob(Inc.)` >= 0.9) %>% 
+  group_by(., FullSibshipIndex) %>% 
+  mutate(., Sibship_minYear = min(Coll_year)) %>% 
+  ungroup()
+
+nrow(UBC_run1_SibSize_META_Allfish)
+nrow(Filtered_Fullsibs)
+``` 
+
+
+## E) Let's convert our fullsib file 
+
+```{r}
+head(Filtered_Fullsibs)
+```
+For the first line of the file, we need the numer of sibgroups
+```{r}
+Filtered_Fullsibs %>% 
+  distinct(., FullSibshipIndex) %>% 
+  nrow()
+```
+
+### 1) Prepare files for python script
+
+Now we need the sibgroup size and the individual ID's
+```{r}
+ID_and_Sibsize <- Filtered_Fullsibs %>%
+  ungroup() %>% 
+  select(., c(FullSibshipIndex, Sibsize, Sibship_Member))
+
+FullSibshipIndexes <- Filtered_Fullsibs %>%
+  ungroup() %>% 
+  select(., FullSibshipIndex) %>% 
+  distinct()
+ 
+```
+ 
+```{r}
+write_csv(ID_and_Sibsize, path = 'C:/Users/noeba/Desktop/FRANZ_stuff/Duplicates_ID_and_Sibsize.csv' ) 
+write_csv(FullSibshipIndexes, path = 'C:/Users/noeba/Desktop/FRANZ_stuff/FullSibshipIndexes.csv' ) 
+```
+ 
+### 2) We need to set up python in Rstudio
+
+Check where it is and Run this ! 
+```{r}
+Sys.which("python")
+use_python("C:/Users/noeba/AppData/Local/r-miniconda/envs/r-reticulate/python.exe")
+```
+
+
+### 3) Try with Python
+
+This didn't work, unfortunately !!
+
+Prepare python to be used
+
+```{r}
+#remotes::install_github("rstudio/reticulate")
+#py_install("pandas")
+library(reticulate)
+#install_miniconda()
+```
+
+
+```{python}
+## Prepare the loop
+
+# Iterate each line
+import re
+myfilename = 'C:/Users/noeba/Desktop/FRANZ_stuff/Duplicates_ID_and_Sibsize.csv'
+new_file = []
+Result_file = 'C:/Users/noeba/Desktop/FRANZ_stuff/FranzSibgroups_input.txt'
+
+
+with open(myfilename, 'r') as maindata:
+   # Read the file contents and generate a list with each line
+   lines_to_dealwith = maindata.readlines()
+
+groups = {}
+
+for line in lines_to_dealwith:
+
+    Sibgroup_this_line = re.search('([0-9]{1,3}),[0-9]{1,3},[0-9]{1,2},SH_[0-9]+', line) 
+    Sibsize_this_line = re.search('[0-9]{1,3},([0-9]{1,2}),SH_[0-9]+', line)    # i.e capture YOY_sibsize_AllYears 
+    Member_this_line = re.search('[0-9]{1,3},[0-9]{1,2},(SH_[0-9]+)', line)    # i.e capture Sibship_Member 
+    
+    if(Sibgroup_this_line not in groups) :               # Changé le ! for not in 
+        groups[Sibgroup_this_line] = []
+    groups[Sibgroup_this_line].append(Member_this_line)  ## ajouté un s a group au début
+    
+new_file.append(str(len(groups)))
+    
+for group in groups:
+    new_file.append(str(len(group)))
+    
+    for member in group:
+        new_file.append(member)
+        
+print(new_file)
+#with open(Result_file, 'w') as result:
+#  result.writelines(new_file)
+```
+
+
+
+### 4) Javascript alternative 
+
+Glen wrote me a script to convert automatically to Franz format. 
+
+
+For that you only need:
+
+1) the input 
+
+Was created just earlier: C:/Users/noeba/Desktop/FRANZ_stuff/Duplicates_ID_and_Sibsize.csv
+In format : FullsibshipIndex , sibsize , Sibship_member
+
+2) Install node.js if not done already 
+
+3) Launch a command prompt and navigate to folder containing input AND script
+
+file:///C:/Users/noeba/Desktop/FRANZ_stuff/Sibgroups_for_Franz_script.js
+
+4) run $ node Sibgroups_for_Franz_script.js
+
+
+# III) Use the clone info ! 
+
+The table "MetagenoALLYEARS_readytotransform2" is created in script 1 before the first Franz run.
+We will use it, filter the duplicates and run Franz again! 
+The duplicates to remove are in "Duplicates_to_remove_CERVUS".
+
+```{r}
+nrow(Duplicates_to_remove_CERVUS)
+nrow(MetagenoALLYEARS_readytotransform2)
+```
+
+## A) Remove duplicates
+```{r}
+New_Franz_input_2transform_noDups <- MetagenoALLYEARS_readytotransform2 %>% 
+  filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove )
+```
+
+```{r}
+nrow(New_Franz_input_2transform_noDups)
+```
+## B) Remove extra metadata
+```{r}
+New_Franz_input_Ready2transform_noDups <- New_Franz_input_2transform_noDups %>% 
+  select(., - c(Coll_year, Pop, WATER_NAME, NMFS_DNA_ID))  
+head(New_Franz_input_Ready2transform_noDups)
+```
+
+## C) Write file to transform
+We will now write the csv file.
+```{r}
+write_csv(New_Franz_input_Ready2transform_noDups, path = 'C:/Users/noeba/Desktop/FRANZ_stuff/To_transform/New_Franz_input_Ready2transform_noDups.csv' ) 
+```
+
+ 
+## D) Transformation: Follow the steps
+
+1) Please go in the csv file and replace all 'NA' by '?' 
+
+2) Then transform the input thanks to FRANz website tool:  
+http://www.bioinf.uni-leipzig.de/Software/FRANz/CSV_Import.html 
+
+3) Then pick the transformed 'file' made by the website with ctrl+A and copy it into the txt file of the transformed folder. 
+** (Or in any folder you want, just take one)
+
+ Warning: If you relaunch FRANz it will replace the files each time :)
+
+
+The transformed file is :   file:///C:/Users/noeba/Desktop/FRANZ_stuff/Transformed/New_Franz_input_transformed_noDups.csv
+
+
+# IV) Run Franz
+
+The manual is here : https://www.bioinf.uni-leipzig.de/Software/FRANz/FRANz2.pdf
+ 
+## A) Estimate Nmax 
+
+Whats is the maximum number of daddys in our 1995 fish dataset (i.e run 7 to 12).
+ 
+```{r}
+
+FullMeta_V4 %>% 
+ filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove ) %>% 
+ filter(., Coll_year != 2017) %>% 
+  count(., Sex)
+ 
+# So this counting is simplistic but we can go for --Nmax of xxx for now.
+
+```
+```{r}
+FullMeta_V4 %>% 
+ filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove ) %>% 
+   filter(., LENGTH >= 150) %>% 
+  filter(., Coll_year != 2017) %>% 
+  count(., Sex)
+```
+```{r}
+FullMeta_V4 %>% 
+ filter(., !Sample_ID %in% Duplicates_to_remove_CERVUS$Mate_to_remove ) %>% 
+   filter(., LENGTH < 150) %>% 
+  filter(., Coll_year != 2017) %>% 
+  count(., Sex)
+```
+ 
+ 
+## B) Error rate 
+
+Here we use 0.001 as an error rate since Diana used that before. Should be fine. 
+
+## C) Input files 
+
+1: The sibgroups file : file:///C:/Users/noeba/Desktop/FRANZ_stuff/FranzSibgroups_input.txt
+2: The transformed genotypes file : New_Franz_input_transformed_noDups.csv 
+
+## D) Other options 
+
+--mintyped 115
+--hwetestout HWE_test.txt
+--maxdepth 8
+--Nmax 2000
+--n 1556           (i.e 822 males + 734 females in dataset, ruling out year 2017)       
+> n here is the sum of candidate males and candidates females in our dataset. 
+ OPTIONAL: --maxmismatching 1,2 to rule out bad assignments (reajust threshold based on data visualisation)
+
+## E) Final command line 
+
+> Navigate to file:///C:/Users/noeba/Desktop/FRANZ_stuff/
+> Run the following line: 
+
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --fullsibin FranzSibgroups_input.txt --Nmax 2000 --maxdepth 8  Transformed/New_Franz_input_transformed_noDups.txt 
+
+> OR with "halfsibin" instead of fullsibin : BAD BAD BAD !!! 
+
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --Nmax 2000 --maxdepth 8 --halfsibin FranzSibgroups_input.txt Transformed/New_Franz_input_transformed_noDups.txt 
+ 
+> Then the results arrive in the folder where the analysed files was.
+> Move ALL the files of that folder into a dedicated result folder.
+
+# V) Post-Franz 
+ 
+ I moved the results manually to : BigCreek_NoDuplicates_Sibship_info_25march2020 
+                                   BigCreek_NoDuplicates_Sibship_info_08April2020
+                                   BigCreek_NoDuplicates_HALFSibship_info_10April2020
+                                   BigCreek_NoDuplicates_Sibship_info_0.9sibshipFiltering_15April2020
+                                   
+ We are going to give this run a short nickname : "nicerun"
+ 
+## A) Read the parentage file 
+
+This is one of FRANz outputs
+Again, change Metageno2017 by the name of the new result folder. 
+    (In the object AND in the path!)
+
+>>> WARNING !!! HERE CHECK WHICH RUN YOU WANT !
+
+BigCreek_NoDuplicates_Sibship_info_25march2020 = With this line: 
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --Nmax 957 --fullsibin FranzSibgroups_input.txt Transformed/New_Franz_input_transformed_noDups.txt 
+
+BigCreek_NoDuplicates_Sibship_info_08April2020 = With this line: 
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --Nmax 2000 --maxdepth 8 --fullsibin FranzSibgroups_input.txt Transformed/New_Franz_input_transformed_noDups.txt 
+> i.e here we added maxdepth 8, changed Nmax and addedd --n , the number of SAMPLED candidates.
+
+BigCreek_NoDuplicates_HALFSibship_info_10April2020 = With this line: 
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --Nmax 2000 --maxdepth 8 --halfsibin FranzSibgroups_input.txt Transformed/New_Franz_input_transformed_noDups.txt 
+> i.e we just changed --fullsibin to --halfsibin (i.e we don't know if they are half sibs or fullsibs)
+
+BigCreek_NoDuplicates_Sibship_info_0.9sibshipFiltering_15April2020 = 
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --Nmax 2000 --maxdepth 8 --fullsibin FranzSibgroups_input.txt Transformed/New_Franz_input_transformed_noDups.txt 
+> But with this one sibships were filtered for Prob(Inc.) > 0.9 and not 0.99. 
+
+BigCreek_NoDuplicates_Sibship_info_0.9sibshipFiltering_08June2020 = 
+FRANz --mintyped 115 --typingerror 0.001 --hwetestout HWE_test_run2.txt --n 1556 --fullsibin FranzSibgroups_input.txt --Nmax 2000 --maxdepth 8  Transformed/New_Franz_input_transformed_noDups.txt
+> I didn't really changed anything, I'm just making sure everything was up to date. 
+
+
+```{r}
+parentage_MetagenoALLYEARS_nicerun <- read_csv("C:/Users/noeba/Desktop/FRANZ_stuff/Results/BigCreek_NoDuplicates_Sibship_info_0.9sibshipFiltering_08June2020/parentage.csv")
+
+nrow(parentage_MetagenoALLYEARS)
+```
+ 
+ 
+## B) Filter the results based on prior probability
+
+We set the limit of Posterioir probability at 0.95.
+We set the minimu LOD score for parents at a minimum of 5.
+
+```{r}
+# Filter it!
+  First_filtered_BigCreek_nicerun <- parentage_MetagenoALLYEARS_nicerun %>% 
+  filter(!is.na(`Parent 1`)) %>%       # Parent ONE to keep single pairs into the dataset
+  filter(Posterior >= 0.99) %>%      # Set the filter here
+  filter(`Pair LOD Parent 1` >= 5 | `Pair LOD Parent 2` >= 5)  %>% 
+  mutate(., TRIOorSP = if_else(is.na(`Parent 2`), "Single_Pair", "Trio"))
+nrow(First_filtered_BigCreek_nicerun)
+```
+Run 25 March: 383
+Run 08 April: 400
+Run 10 April: 136 (Kind of big loss here!)
+Run 14 April: 374 (Nice enough!)
+Run 08 June : 375  
+
+
+What % of assignment lost with the 0.95 Posterior and 5 Pair LOD filtering ?
+```{r}
+Without_NA_Unfiltered_nicerun <- parentage_MetagenoALLYEARS_nicerun %>% 
+  filter(!is.na(`Parent 1`)) %>% 
+  mutate(., TRIOorSP = if_else(is.na(`Parent 2`), "Single_Pair", "Trio"))
+  
+100 - (nrow(First_filtered_BigCreek_nicerun) * 100) / nrow(Without_NA_Unfiltered_nicerun) 
+```
+Run 25 March: 16.00877 % 
+Run 08 April: 17.86448 %
+Run 10 April: 86.73171 %
+Run 14 April: 14.02299 % 
+Run 08 June : 14.57859 %
+
+
+## C) Script 2 - based
+ 
+ Above was almost a copy-paste of script 1, adding sibship info and removing duplicates. 
+ Now, we will mimick what was done in script two for the first run. 
+ 
+### 1) Count trios and SP
+
+```{r}
+First_filtered_BigCreek_nicerun %>% 
+  group_by(., TRIOorSP == "Trio") %>% 
+  count()
+```
+
+
+```{r}
+First_filtered_BigCreek_nicerun %>% 
+  group_by(., TRIOorSP == "Single_Pair") %>% 
+  count()
+```
+Run 25 March: 66 Trios and 317 SP
+Run 08 April: 66 Trios and 334 SP
+Run 15 April: 64 Trios and 310 SP
+Run 08 June: 64 Trios and 311 SP
+
+
+# REPORT AND THINK ABOUT THIS
+
+So with this run we have 148 trios and 527 single pairs, 
+And if we reduce the allowed mismatches to 1 for SP and 2 for Trios we obtain only 122 trios and 370 SP !
+If we reallow more mismatches and we give all the sibships as input (and not only the YOY) and if we filter for prior > 0.99 we obtain 66 trios and 317 SP. 
+This is slightly less than in the first run (176 trios and 586 SP), but it probably eliminated the false ones.  
+
+# REPORT AND THINK ABOUT THIS
+
+
+### 2) Enrich the dataset 
+
+We use minimeta_V6, which was created later than script two.
+
+This chunk is juste to have the one column format to compute number of kids per parent.
+```{r}
+
+tidy_coast_BicCreek_USEFUL_nicerun <- tidy_franz(First_filtered_BigCreek_nicerun) %>% mutate(parent_posterior = round(parent_posterior,2))
+head(tidy_coast_BicCreek_USEFUL_nicerun)
+
+# Now we use the dataset transformed by tidyfranz.
+# Now we would like to join the info to the regular format dataset.
+
+# We can easily get how many kids a parent had with that dataset.
+
+tidy_coast_BicCreek_USEFUL_totkidperfish_nicerun <- tidy_coast_BicCreek_USEFUL_nicerun %>% 
+  group_by(., parent) %>% 
+  add_count() %>% 
+  filter(., !is.na(parent)) %>% 
+  rename(., Number_of_kids_per_parent = n) %>% 
+  ungroup() 
+# This is a nice file, let join it with our metadata
+
+Numkids_per_parent_nicerun <- tidy_coast_BicCreek_USEFUL_totkidperfish_nicerun %>% 
+  distinct(., parent, .keep_all = T) %>% 
+  select(., c(parent, Number_of_kids_per_parent))
+
+```
+
+Now just prepare the metadata 
+```{r}
+Minimeta_for_nicerun <- Minimeta_V6 %>% 
+  rename(., parent = "Sample_ID") %>% 
+  left_join(., Numkids_per_parent_nicerun, by = "parent")  
+```
+
+#### a) For parent 1 
+
+```{r}
+Minimeta_for_nicerun_P1_beta <- Minimeta_for_nicerun %>% 
+  rename(., parent_1 = "parent") 
+colnames(Minimeta_for_nicerun_P1_beta) <- paste(colnames(Minimeta_for_nicerun_P1_beta), "_parent_1", sep = "")
+Minimeta_for_nicerun_P1 <- Minimeta_for_nicerun_P1_beta %>% 
+  rename(., parent_1 = "parent_1_parent_1") %>%
+  select(.,  -c(Population_parent_1, Indiv_parent_1, AGE_parent_1))
+  
+```
+
+#### b) For parent 2
+
+```{r}
+Minimeta_for_nicerun_P2_beta <- Minimeta_for_nicerun %>% 
+  rename(., parent_2 = "parent") 
+colnames(Minimeta_for_nicerun_P2_beta) <- paste(colnames(Minimeta_for_nicerun_P2_beta), "_parent_2", sep = "")
+Minimeta_for_nicerun_P2 <- Minimeta_for_nicerun_P2_beta %>% 
+  rename(., parent_2 = "parent_2_parent_2") %>%
+  select(.,  -c(Population_parent_2, Indiv_parent_2, AGE_parent_2))
+  
+```
+
+#### c) For kid
+
+```{r}
+Minimeta_for_nicerun_kid <- Minimeta_for_nicerun %>% 
+  rename(., kid = "parent") 
+colnames(Minimeta_for_nicerun_kid) <- paste(colnames(Minimeta_for_nicerun_kid), "_kid", sep = "")
+Minimeta_for_nicerun_kid <- Minimeta_for_nicerun_kid %>% 
+  rename(., kid = "kid_kid") %>%
+  select(.,  -c(Population_kid, Indiv_kid, AGE_kid, Number_of_kids_per_parent_kid))
+  
+```
+ 
+Now use those mini datasets to enrich our parentage dataset. 
+```{r}
+
+Enriched_nicerun <- First_filtered_BigCreek_nicerun %>% 
+  rename(., kid = "Offspring") %>%        # First rename some variables 
+  rename(., parent_1 = "Parent 1") %>% 
+  rename(., parent_2 = "Parent 2") %>% 
+  left_join(., Minimeta_for_nicerun_P1, by = "parent_1" ) %>% 
+  left_join(., Minimeta_for_nicerun_P2, by = "parent_2" ) %>% 
+  left_join(., Minimeta_for_nicerun_kid, by = "kid" ) 
+
+nrow(Enriched_nicerun)
+```
+
+
+Add "mom" and "dad"
+Add family size, with and without Single pairs 
+Add mom and dad size and Omy5 
+
+
+```{r}
+
+Enriched_nicerun_V2 <- Enriched_nicerun %>% 
+  mutate(., Mom = ifelse(Sex_parent_1 == "F", parent_1, parent_2 )) %>% 
+  mutate(., Dad = ifelse(Sex_parent_1 == "M", parent_1, parent_2 )) %>% 
+  group_by(., Mom, Dad, Coll_year_kid) %>%               # Compute family size including SP. 
+                                                         # It sucks if it is trios !
+  add_count() %>% 
+  mutate(FamilySize_SP = ifelse( TRIOorSP == "Single_Pair", n, NA)) %>% 
+  select(., - c(n)) %>% 
+  ungroup() %>% 
+  group_by(., Mom, Dad, TRIOorSP) %>%               # Compute family size EXCLUDING SP
+  add_count() %>% 
+  mutate(FamilySize_TriosOnly = ifelse( TRIOorSP == "Trio", n, NA)) %>% 
+  select(., - c(n)) %>% 
+  ungroup()  %>% 
+  # If SINGLE - PAIR the family size is per YEAR, so we don't inflate the family sizes ! 
+  mutate(.,  FamilySize_SPtrio = ifelse(is.na(FamilySize_SP), FamilySize_TriosOnly, FamilySize_SP ) ) %>% 
+  mutate(., Momsize = if_else(condition = Sex_parent_1 == "F", true = LENGTH_parent_1, false =  LENGTH_parent_2)) %>% 
+  mutate(., Dadsize = if_else(condition = Sex_parent_1 == "M", true = LENGTH_parent_1, false =  LENGTH_parent_2)) %>%       
+  mutate(., MomYear = if_else(condition = Sex_parent_1 == "F", true = Coll_year_parent_1, false =  Coll_year_parent_2)) %>% 
+  mutate(., DadYear = if_else(condition = Sex_parent_1 == "M", true = Coll_year_parent_1, false =  Coll_year_parent_2)) %>% 
+  mutate(., MomOmy5 = if_else(condition = Sex_parent_1 == "F", true = hapstr_parent_1 , false =  hapstr_parent_2)) %>% 
+  mutate(., DadOmy5 = if_else(condition = Sex_parent_1 == "M", true = hapstr_parent_1, false =  hapstr_parent_2)) %>% 
+  # Create a column to know number of kids per mom
+  mutate(., Number_of_kids_Mom = if_else(condition = Sex_parent_1 == "F", true = Number_of_kids_per_parent_parent_1, false =  Number_of_kids_per_parent_parent_2)) %>%
+  mutate(., Number_of_kids_Dad = if_else(condition = Sex_parent_1 == "M", true = Number_of_kids_per_parent_parent_1, false =  Number_of_kids_per_parent_parent_2)) 
+
+```
+
+## D) Script 3 - based 
+
+Now that we have enriched the dataset, we will copy the next script for this new run. 
+However, the script 3 was done for Omy5 and we already have this information here ! 
+So we will just do a couple of things: 
+
+### 1) Compute a "family type"
+
+```{r}
+Enriched_nicerun_V3 <- Enriched_nicerun_V2 %>% 
+  group_by(., Mom, Dad ) %>% 
+  mutate(., Family_OmyType = if_else(hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "AAAA", "Anadromous", if_else(hapstr_parent_1 == "RRRR" & hapstr_parent_2 == "RRRR", "Resident", if_else( hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "RRRR" | hapstr_parent_1 == "RRRR" & hapstr_parent_2 == "AAAA" | hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "HHHH" | hapstr_parent_1 == "RRRR" & hapstr_parent_2 == "HHHH" | hapstr_parent_1 == "HHHH" & hapstr_parent_2 == "HHHH" | hapstr_parent_1 == "HHHH" & hapstr_parent_2 == "AAAA" | hapstr_parent_1 == "HHHH" & hapstr_parent_2 == "RRRR" , "Mixed", if_else(is.na(hapstr_parent_1) == T | is.na(hapstr_parent_2) == T, "Unknown", "Unknown", missing = "Unknown"))))) %>% 
+  ungroup()
+
+Enriched_nicerun_V3$Family_OmyType <- Enriched_nicerun_V3$Family_OmyType %>% 
+  replace_na("Unknown")
+
+```
+
+### 2) Check Omy5 incompatibilities within families.  
+
+We follow this rule : 
+
+Parent 1 	Parent 2 	kid 	STATUS
+A	        R	        A     Incompatible
+H	        R	        A	    Incompatible
+R	        R	        A	    Incompatible
+A	        R	        R	    Incompatible
+A	        H	        R	    Incompatible
+A	        A	        R	    Incompatible
+A	        A	        H	    Incompatible
+R	        R	        H	    Incompatible
+A	        H	        A	    OK
+A	        A	        A	    OK
+H	        H	        A	    OK
+H	        R	        R	    OK
+H	        H	        R	    OK
+R	        R	        R	    OK
+A	        R	        H	    OK
+A	        H	        H	    OK
+H	        R	        H	    OK
+H	        H	        H	    OK
+
+Below we keep only some columns for clarity.
+Also, we remove the Family_OmyType that are unknown, 
+because we cannot determine incompatibilities in those !
+
+Then we compute an "Omy5_compatibility" based on the table above. 
+```{r}
+
+Enriched_nicerun_Omy5_incompatibilities <- Enriched_nicerun_V3 %>% 
+  select(., parent_1, parent_2, kid,Mismatches, TRIOorSP, hapstr_parent_1, hapstr_parent_2 , hapstr_kid, FamilySize_TriosOnly, Family_OmyType ) %>% 
+  filter(., !Family_OmyType == "Unknown") %>% 
+  group_by(., parent_1, parent_2, kid) %>% 
+  mutate(., Omy5_compatibility = if_else( condition = hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "RRRR" & hapstr_kid == "AAAA" | hapstr_parent_1 == "HHHH" & hapstr_parent_2 == "RRRR" & hapstr_kid == "AAAA" | hapstr_parent_1 == "RRRR" & hapstr_parent_2 == "RRRR" & hapstr_kid == "AAAA" | hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "RRRR" & hapstr_kid == "RRRR" | hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "HHHH" & hapstr_kid == "RRRR" | hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "AAAA" & hapstr_kid == "RRRR" | hapstr_parent_1 == "AAAA" & hapstr_parent_2 == "AAAA" & hapstr_kid == "HHHH" | hapstr_parent_1 == "RRRR" & hapstr_parent_2 == "RRRR" & hapstr_kid == "HHHH", true = "Incompatible_haptstr", false = "compatible_hapstr")) %>% ungroup()
+
+Enriched_nicerun_Omy5_incompatibilities %>% count(., Omy5_compatibility == "Incompatible_haptstr")
+```
+
+NO OMY5 INCOMPATIBILITIES ! :D 
+
+
+## E) Script 4 - based 
+ 
+This script 4 was starting some analysis, so we will repeat them here. 
+
+### 1) Sex ratio 1809 dataset
+ 
+ This is the sex ratio in the total dataset, with the 1809 fish. 
+ 
+```{r}
+
+Sexratio_total <- Minimeta_V8_noDup %>%
+  group_by(., Sex) %>% 
+  add_count() %>% 
+  ungroup()
+
+Numfemales <- Sexratio_total %>% 
+  filter(., Sex == "F") %>%
+  select(., n)
+ numf = Numfemales[1,1] / nrow(MetaALLYEARS)
+ numm = (nrow(MetaALLYEARS) - Numfemales[1,1]) / nrow(MetaALLYEARS)
+ 
+numf
+numm
+# Totalsexratio(F:M) for the complete dataset (rounded) = 0.458 Females : 0.542 Males
+```
+
+Run 08 June: 0.4270677 (F) 0.5729323 (M)
+
+ 
+### 2) Sex ratio in parentage results 
+
+#### a) In parents 
+
+
+Parents without duplicates, i.e each parent, regardless of the number of breeding relationship (trio/SP) he is part of, is present only once in the count.
+
+```{r} 
+
+Num_moms <- Enriched_nicerun_V3 %>%
+  ungroup() %>% 
+  select(., Mom) %>% 
+  filter(., !is.na(Mom)) %>% 
+  distinct(., Mom)
+
+Num_dads <- Enriched_nicerun_V3 %>%
+  ungroup() %>% 
+  select(., Dad) %>% 
+  filter(., !is.na(Dad)) %>% 
+  distinct(., Dad)
+
+totparents <- nrow(Num_moms) + nrow(Num_dads) 
+nrow(Num_moms) / totparents
+nrow(Num_dads) / totparents
+
+# Without the duplicates, we have a sexratio(F:M) of (rounded) : 0.46 F:M 0.54
+```
+We have a sexratio (F:M) of (rounded) : Females : 0.52
+                                        Males   : 0.48
+
+Run 25 March : 
+When we give all the sibship info with nor restriction on mismatches: 
+We have a sexratio (F:M) of (rounded) : Females : 0.39
+                                        Males   : 0.61
+ 
+
+Run 08 April : 
+When we give all the sibship info with nor restriction on mismatches: 
+We have a sexratio (F:M) of (rounded) : Females : 0.42
+                                        Males   : 0.58
+                  
+Run 15 April : 
+When we give all the sibship info with nor restriction on mismatches: 
+We have a sexratio (F:M) of (rounded) : Females : 0.42
+                                        Males   : 0.58  
+                                        
+Run 08 June : 
+When we give all the sibship info with nor restriction on mismatches: 
+We have a sexratio (F:M) of (rounded) : Females : 0.4020619
+                                        Males   : 0.5979381
+
+Up to date in 16/06/2020 : 0.3917526 / 0.6082474
+                                        
+                                        
+#### b) In kids 
+
+```{r}
+Sexratio_postparentage_nicerun <- Enriched_nicerun_V3 %>%
+  group_by(., Sex_kid) %>% 
+  add_count() 
+
+Numfemales_kid_nicerun <- Sexratio_postparentage_nicerun %>% 
+  filter(., Sex_kid == "F") %>%  
+  select(., n) 
+
+Nummales_kid_nicerun <- Sexratio_postparentage_nicerun %>% 
+  filter(., Sex_kid == "M") %>%  
+  select(., n) 
+
+ numf_kid_nicerun = Numfemales_kid_nicerun[1,2] / nrow(Enriched_nicerun_V3)
+ numm_kid_nicerun = Nummales_kid_nicerun[1,2] / nrow(Enriched_nicerun_V3)
+ 
+numf_kid_nicerun
+numm_kid_nicerun
+numf_kid_nicerun + numm_kid_nicerun
+ 
+```
+
+Total sexratio (proportions F:M) of kids (rounded) =  Females : 0.51
+                                                      Males   : 0.49
+  
+When we give all the sibship info with nor restriction on mismatches: 
+We have a sexratio (F:M) of (rounded) : Females : 0.465
+                                        Males   : 0.535
+  
+
+#### c) Annual sex ratio in kids 
+
+```{r}
+Sex_kids_per_year_nicerun <- Enriched_nicerun_V3 %>% 
+  ungroup() %>% 
+  select(., Coll_year_kid, kid, Sex_kid) %>% 
+  group_by(., Coll_year_kid, Sex_kid) %>% 
+  add_count() %>% 
+  distinct(., Coll_year_kid, Sex_kid, n) %>% 
+  spread(., Sex_kid,  n) %>% 
+  rename(., Female = "F", Male = "M") %>% 
+  mutate(., Sex_R_proportions_Females = Female/(Female+Male)) %>% 
+  ungroup() %>% 
+  mutate(., NumKids_this_Years = Female + Male)
+```
+
+Let's plot that ?
+
+```{r}
+library(ggplot2)
+
+ggplot(Sex_kids_per_year_nicerun) +
+ aes(x = Coll_year_kid, y = Sex_R_proportions_Females, colour = NumKids_this_Years) +
+ geom_boxplot(fill = "#0c4c8a") +
+ scale_color_distiller(palette = "Spectral") +
+ labs(x = "Collection year", y = "Proportion of females in kids", color = "Number of kids this year") +
+ theme_minimal()
+```
+
+
+ 
+ 
+ 
+# THE END 
+
+You can go to script 9 where we will link the new parentage data with the sibship data. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+### Modified version
+ 
+Below, when YOY_fullsibs were used (rather than the whole dataset) 
+ 
+ ## D) Filter Prob(Inc.) > 0.99 in fullsib file 
+
+Basically the lower Prob(Inc.) the higher the probability that siblings can be split in two different families. 
+Given that Franz is going to take the fullsibs input file as the exact truth, we should be cautious!
+
+Thus, we will filter sibgroups with a Prob(Inc.) > 0.99
+
+Filtered_YOY_Fullsibs <- UBC_run1_SibSize_META_Result2_YOYs %>% 
+  filter(., `Prob(Inc.)` >= 0.99)
+
+head(UBC_run1_SibSize_META_Allfish)
+
+
+
+
+## E) Let's convert our fullsib file 
+
+
+For the first line of the file, we need the numer of sibgroups
+
+Filtered_YOY_Fullsibs %>% 
+  distinct(., FullSibshipIndex) %>% 
+  nrow()
+
+
+### 1) Prepare files for python script
+
+Now we need the sibgroup size and the individual ID's
+
+ID_and_Sibsize <- Filtered_YOY_Fullsibs %>%
+  ungroup() %>% 
+  select(., c(FullSibshipIndex, YOY_sibsize_AllYears, Sibship_Member))
+
+FullSibshipIndexes <- Filtered_YOY_Fullsibs %>%
+  ungroup() %>% 
+  select(., FullSibshipIndex) %>% 
+  distinct()
+ 
+
+ 
+ 
+ 
+ 
+ 
+# BONUS : Try CKMRsim instead of FRANz 
+
+Ya ce script de Neil qui peut aider: 
+Neil_power_analysis_example_chinook.Rmd (Dans MicrohapSteelhead project)
+
+Va la pour voir ce que Diana as fait : 
+D:\Nonopov_travail\Santa_Cruz_internship\New stage\Noe\MicrohapsSteelheadProject\R_MiStPr\nsf-rockfish-parentage
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 

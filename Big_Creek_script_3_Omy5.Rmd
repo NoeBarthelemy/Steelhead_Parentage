@@ -1,0 +1,269 @@
+---
+title: "Omy5_Big_Creek_analysis"
+author: 'Noé Barthelemy'
+date: "26 mai 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE}
+library(knitr)
+library(tidyverse)
+library(readxl)
+```
+
+
+ Hello ! 
+ 
+ This script is the third one of a serie, and to continue you should need only to have run the two first scripts, and to have the Parentage_meta_V7 dataset. 
+ Have fun
+
+
+
+              USE "Parentage_meta_V7" AT THE BEGINNING OF this SCRIPT 
+
+# A guiding message from Anthony
+
+Hi Noé-
+
+The microhap genotypes are in the file: gtseq7-12_ubc_hap2col_current_vcf.txt
+You will need to cross-reference the IDs (e.g. steelhead1258) with the SampleSheets (in the excel files) to get back to our metadata (also in the excel files) and then to the information in the file from Tommy (Upper Big Creek fall tissue...). The A/R genotypes for everything we have run are in the attached file (and on the GDrive). Again, you will need to match these up to your individuals and metadata using the sequencing IDs (e.g. steelhead1258).
+
+Let me know if you have any other questions.
+
+Anthony
+
+# Let's begin by importing the dataset with Omy5 info. 
+
+
+Maybe just use readr to import that one 
+```{r}
+steelhead_omy5_rora_last4_indiv_runs1_12_target_only_1MAY2019 <- read_delim("Data/steelhead_omy5_rora_last4_indiv_runs1-12_target_only_1MAY2019.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+
+
+WTFinthere <- steelhead_omy5_rora_last4_indiv_runs1_12_target_only_1MAY2019 %>% 
+  distinct(., hapstr)
+Omy5pops <- steelhead_omy5_rora_last4_indiv_runs1_12_target_only_1MAY2019 %>% 
+    distinct(., Population)
+View(WTFinthere)
+
+```
+
+# Filter genotypes from our populations of interest
+
+    - Big Creek
+    - Upper Big Creek
+    - Devils Creek ??
+
+```{r}
+
+Big_Creek_Omy5_Genotypes <- steelhead_omy5_rora_last4_indiv_runs1_12_target_only_1MAY2019 %>% 
+  filter(., Population == "BigCk" | Population == "UpperBigCreek" | Population == "DevilsCk")
+View(Big_Creek_Omy5_Genotypes)
+```
+
+# How many crappy genotypes in those ? 
+
+```{r}
+Good_Omy5s <- Big_Creek_Omy5_Genotypes %>% 
+  filter(., hapstr == "AAAA" | hapstr == "HHHH" | hapstr == "RRRR")
+
+# Thus the nuber of bad genotypes is:
+nrow(Big_Creek_Omy5_Genotypes) - nrow(Good_Omy5s)
+# And in % :
+100 - (nrow(Good_Omy5s) *100 / nrow(Big_Creek_Omy5_Genotypes))
+```
+OK !! 3.24% of missing data only ! :P 
+
+# How many fish per genotype ? 
+I need to filter out those that have are not in the 1995 fish (where do they come from then?!)
+```{r}
+Omy1995 <- Good_Omy5s %>% 
+  rename(., indiv.ID = "Indiv") %>% 
+  filter(., indiv.ID %in% FullMeta_V4$indiv.ID)
+
+count(Good_Omy5s, hapstr )
+count(Omy1995, hapstr )
+nrow(Good_Omy5s)
+nrow(Omy1995)
+
+
+100 - (nrow(Omy1995) *100 /1995)
+
+
+```
+So actually the loss is only of 2.45% in the 1995 fish dataset :) 
+
+Which fish are missing Omy5 ?
+```{r}
+Missing_Omy5 <- FullMeta_V4 %>% 
+  filter(., !indiv.ID %in% Good_Omy5s$Indiv)
+View(Missing_Omy5)
+
+```
+It appears that they are all from different years !
+We could retrieve them by fixing their Omy5 genotypes but wouldn't be worth it I think. 
+
+
+# Join it with our main dataset from the last script
+
+```{r}
+
+Parentage_meta_Omy_V1 <- Parentage_meta_V7 
+
+  head(Good_Omy5s)
+  head(Parentage_meta_V7)
+
+```
+
+
+   YOU NEED A KEY ! A key contains all the different formats of identifiers, like NMFS ID, SH_blabla, steelheadX, etc 
+
+    'MetaALLYEARS' is the table to go to take that key: Here we go.
+    (MetaALLYEARS has been developped in script one or two also, run them first !)
+```{r}
+head(MetaALLYEARS)
+Key_BC_V1 <- MetaALLYEARS %>% 
+  select(., Sample_ID, indiv.ID)
+
+head(Key_BC_V1)
+```
+
+  1. Join the Kids Omy5 genotypes 
+
+```{r}
+
+
+# Assemble the Omy5 genotypes with the key. 
+Good_Omy5s_V2 <- Omy1995 %>% 
+  left_join(Key_BC_V1, by = "indiv.ID") %>% 
+  rename(., kid = "Sample_ID" )
+View(Good_Omy5s_V2)
+
+
+Parentage_meta_Omy_V2 <- Parentage_meta_Omy_V1 %>% 
+  left_join(., Good_Omy5s_V2, by = "kid") %>% 
+  rename(., Omy_Kid = "hapstr")
+
+head(Good_Omy5s)
+head(Good_Omy5s_V2)
+head(Key_BC_V2)
+head(Parentage_meta_Omy_V2)
+
+nrow(Parentage_meta_Omy_V2)
+nrow(Parentage_meta_V7)
+```
+
+
+ 2. Join the Omy 5 genotypes of the parents? 
+ 
+ Please remember that because I do all the renaming it can cause mistakes if you re-use Good_Omy5s_V2, V3 or V4 later so don't do it ! 
+
+```{r}
+# Each time I need to rename in kid, parent_1, parent_2 because I don't know how to join columns with different names.
+Good_Omy5s_V3 <- Good_Omy5s_V2 %>% 
+    rename(., parent_1 = "kid" )  
+  
+Parentage_meta_Omy_V3 <- Parentage_meta_Omy_V2 %>% 
+  left_join(., Good_Omy5s_V3, by = "parent_1") %>% 
+  rename(., Omy_parent_1 = "hapstr")
+
+Good_Omy5s_V4 <- Good_Omy5s_V2 %>% 
+    rename(., parent_2 = "kid" )
+
+Parentage_meta_Omy_V4 <- Parentage_meta_Omy_V3 %>% 
+  left_join(., Good_Omy5s_V4, by = "parent_2") %>% 
+  rename(., Omy_parent_2 = "hapstr") %>% 
+  select(., -c(indiv.ID.x, Population.x, indiv.ID.y,Population.y))
+
+head(Good_Omy5s_V4)
+head(Parentage_meta_Omy_V3)
+nrow(Parentage_meta_Omy_V4)
+nrow(Parentage_meta_Omy_V3)
+nrow(Good_Omy5s_V2)
+```
+
+
+ Nice job ! 
+ 
+ At this point we have joined all the Omy5 data. 
+ We may want to make sure that there are no incompatibilities: Eg. a kid AAAA produced by two RRRR parents ! 
+ 
+## Check for Omy5 incompatibilities
+ 
+```{r}
+Incompatibilities_AAAA <- Parentage_meta_Omy_V4 %>% 
+    filter(., Omy_Kid == "AAAA" & Omy_parent_1 == "RRRR" & Omy_parent_2 == "RRRR")
+
+Incompatibilities_RRRR <- Parentage_meta_Omy_V4 %>% 
+    filter(., Omy_Kid == "RRRR" & Omy_parent_1 == "AAAA" & Omy_parent_2 == "AAAA")
+
+Incompatibilities_HHHH_1 <- Parentage_meta_Omy_V4 %>% 
+    filter(., Omy_Kid == "HHHH" & Omy_parent_1 == "RRRR" & Omy_parent_2 == "RRRR")
+
+Incompatibilities_HHHH_2 <- Parentage_meta_Omy_V4 %>% 
+    filter(., Omy_Kid == "HHHH" & Omy_parent_1 == "AAAA" & Omy_parent_2 == "AAAA")
+
+
+  
+head(Incompatibilities_AAAA) 
+head(Incompatibilities_RRRR)
+
+head(Incompatibilities_HHHH_1)
+head(Incompatibilities_HHHH_2)  
+
+nrow(Incompatibilities_HHHH_1)
+nrow(Incompatibilities_HHHH_2)
+
+nrow(Parentage_meta_Omy_V4)
+```
+ 
+
+Oh ! We need the sex of the kids also, just in case :) 
+
+```{r}
+
+JustforSex_kids <- JustforSex %>% 
+  rename(., kid = "parent")
+
+head(Parentage_meta_Omy_V4)
+Parentage_meta_Omy_V5 <- Parentage_meta_Omy_V4 %>% 
+  left_join(., JustforSex_kids, by = "kid") %>% 
+  rename(., Sex_kid = "Sex") 
+  
+
+head(JustforSex_kids)
+head(Parentage_meta_Omy_V5)
+
+
+```
+
+
+
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+                      YOU CAN GO TO SCRIPT 4 ! 
+
